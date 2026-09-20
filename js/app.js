@@ -209,6 +209,20 @@ function setupTranscriptionListeners() {
   const resultRaw = document.getElementById('result-raw-transcript');
   const toggleText = document.getElementById('toggle-transcript-text');
 
+  // Auto-configuración si la clave viene en el hash de la URL (#key=...)
+  if (window.location.hash && window.location.hash.includes('key=')) {
+    const match = window.location.hash.match(/key=([^&]+)/);
+    if (match && match[1]) {
+      const urlKey = decodeURIComponent(match[1]).trim();
+      if (urlKey) {
+        localStorage.setItem('air_gemini_api_key', urlKey);
+        try {
+          history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        } catch (_) {}
+      }
+    }
+  }
+
   // Gestión de clave de Gemini API
   const keyInput = document.getElementById('gemini-api-key-input');
   const btnSaveKey = document.getElementById('btn-save-gemini-key');
@@ -217,7 +231,7 @@ function setupTranscriptionListeners() {
   const updateKeyStatus = (hasKey) => {
     if (!keyStatus) return;
     if (hasKey) {
-      keyStatus.textContent = "✓ Clave Activa (Gemini 2.0 Flash)";
+      keyStatus.textContent = "✓ Modelo Activo (Google Gemini 3.6 Flash)";
       keyStatus.className = "text-[10px] px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800 border border-emerald-200";
     } else {
       keyStatus.textContent = "Modo Local (Sin Clave)";
@@ -237,11 +251,11 @@ function setupTranscriptionListeners() {
       if (val) {
         localStorage.setItem('air_gemini_api_key', val);
         updateKeyStatus(true);
-        showToast("Clave de Gemini guardada en tu navegador.");
+        showToast("✓ Clave de Gemini guardada y activada con éxito.");
       } else {
         localStorage.removeItem('air_gemini_api_key');
         updateKeyStatus(false);
-        showToast("Clave de Gemini removida.");
+        showToast("Clave removida. Usando motor local.");
       }
     });
   }
@@ -694,13 +708,16 @@ function blobToBase64(blob) {
 
 async function processAudioWithGemini(audioBlob, userTitle, userAttendees) {
   const apiKey = localStorage.getItem('air_gemini_api_key') || '';
+  if (!apiKey) {
+    throw new Error("No se ha configurado la clave de Gemini. Por favor ingresa tu API Key en el recuadro de configuración.");
+  }
   const statusText = document.getElementById('processing-step-text');
 
-  if (statusText) statusText.textContent = "Preparando audio y convirtiendo para el modelo Google Gemini 2.0 Flash...";
+  if (statusText) statusText.textContent = "Preparando audio y conectando con el modelo Google Gemini 3.6 Flash...";
 
   const base64Data = await blobToBase64(audioBlob);
 
-  if (statusText) statusText.textContent = "El modelo Gemini está escuchando el audio y transcribiendo en la nube...";
+  if (statusText) statusText.textContent = "Gemini 3.6 Flash está escuchando tu voz y transcribiendo el audio en alta fidelidad...";
 
   const prompt = `Eres un modelo de inteligencia artificial de última generación especializado en transcripción fonética y redacción de actas de reuniones en español.
 Escucha con absoluta atención el audio adjunto en español.
@@ -708,7 +725,7 @@ ${userTitle ? `Título sugerido por el usuario: "${userTitle}".` : ''}
 ${userAttendees ? `Participantes convocados sugeridos: "${userAttendees}".` : ''}
 
 Debes realizar:
-1. Transcribir literalmente cada palabra pronunciada en el audio.
+1. Transcribir literalmente cada palabra pronunciada en el audio. Si el audio contiene silencios o ruido leve, transcribe lo que se haya alcanzado a vocalizar.
 2. Redactar un resumen ejecutivo corporativo y fiel de lo que se habló.
 3. Extraer los acuerdos formalizados y las tareas o compromisos asignados a los participantes con sus fechas.
 
@@ -729,7 +746,15 @@ Devuelve ÚNICAMENTE un objeto JSON estrictamente válido con esta estructura:
   ]
 }`;
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+  let mimeType = audioBlob.type || 'audio/webm';
+  if (mimeType.includes(';')) {
+    mimeType = mimeType.split(';')[0].trim();
+  }
+  if (!mimeType || mimeType === 'application/octet-stream') {
+    mimeType = 'audio/webm';
+  }
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -740,7 +765,7 @@ Devuelve ÚNICAMENTE un objeto JSON estrictamente válido con esta estructura:
           parts: [
             {
               inlineData: {
-                mimeType: audioBlob.type || 'audio/webm',
+                mimeType: mimeType,
                 data: base64Data
               }
             },
@@ -780,11 +805,80 @@ Devuelve ÚNICAMENTE un objeto JSON estrictamente válido con esta estructura:
     participantes: (userAttendees && userAttendees.trim()) 
       ? userAttendees.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean)
       : (parsed.participantes && parsed.participantes.length > 0 ? parsed.participantes : ["Participante Principal", "Equipo de Trabajo"]),
-    resumenEjecutivo: parsed.resumenEjecutivo || "Resumen procesado por Gemini.",
+    resumenEjecutivo: parsed.resumenEjecutivo || "Resumen procesado por Gemini 3.6 Flash.",
     temasTratados: parsed.temasTratados || [],
     acuerdos: parsed.acuerdos || [],
     tareas: parsed.tareas || [],
     transcripcionOriginal: parsed.transcripcion || ""
+  };
+}
+
+async function processTextWithGemini(rawText, userTitle, userAttendees) {
+  const apiKey = localStorage.getItem('air_gemini_api_key') || '';
+  if (!apiKey) {
+    throw new Error("No se ha configurado la clave de Gemini.");
+  }
+  const statusText = document.getElementById('processing-step-text');
+  if (statusText) statusText.textContent = "Gemini 3.6 Flash está analizando el texto y estructurando compromisos corporativos...";
+
+  const prompt = `Eres un asistente ejecutivo corporativo de alto nivel especializado en actas de reuniones en español.
+Analiza la siguiente transcripción:
+"${rawText}"
+${userTitle ? `Título sugerido por el usuario: "${userTitle}".` : ''}
+${userAttendees ? `Participantes convocados sugeridos: "${userAttendees}".` : ''}
+
+Debes estructurar el acta completa extrayendo acuerdos, fechas límites y tareas concretas.
+Devuelve ÚNICAMENTE un objeto JSON estrictamente válido con esta estructura:
+{
+  "titulo": "Título formal de la reunión",
+  "resumenEjecutivo": "Resumen ejecutivo profesional y detallado de las decisiones tomadas...",
+  "participantes": ["Nombre 1", "Nombre 2"],
+  "temasTratados": [
+    {"tiempo": "00:00", "tema": "Título del tema", "detalle": "Detalle de lo tratado..."}
+  ],
+  "acuerdos": [
+    {"id": "AC-01", "descripcion": "Acuerdo...", "impacto": "Alto"}
+  ],
+  "tareas": [
+    {"id": "TAR-01", "tarea": "Tarea...", "responsable": "Responsable", "plazo": "2026-10-10 17:00", "prioridad": "Alta", "completada": false}
+  ]
+}`;
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    })
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `Error HTTP ${response.status}`);
+  }
+
+  const result = await response.json();
+  const textOutput = result.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!textOutput) throw new Error("Sin respuesta del modelo.");
+  const parsed = JSON.parse(textOutput);
+  
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+  return {
+    titulo: userTitle || parsed.titulo || `Sesión de Trabajo — ${dateStr}`,
+    fechaHora: `${dateStr} ${timeStr}`,
+    duracion: state.recordedSeconds > 0 ? `${Math.floor(state.recordedSeconds / 60)} min ${state.recordedSeconds % 60} s` : "Transcripción de texto",
+    participantes: (userAttendees && userAttendees.trim()) 
+      ? userAttendees.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean)
+      : (parsed.participantes && parsed.participantes.length > 0 ? parsed.participantes : ["Equipo de Trabajo"]),
+    resumenEjecutivo: parsed.resumenEjecutivo || "Resumen procesado por Gemini 3.6 Flash.",
+    temasTratados: parsed.temasTratados || [],
+    acuerdos: parsed.acuerdos || [],
+    tareas: parsed.tareas || [],
+    transcripcionOriginal: rawText
   };
 }
 
@@ -807,8 +901,17 @@ async function runAIProcessing() {
     return;
   }
 
-  // CASO 1: Audio grabado o subido + Clave de Gemini presente -> Transcripción Multimodal directa con IA
-  if (apiKey && (state.audioBlob || state.currentFile)) {
+  // CASO 1: Audio grabado o subido -> Transcripción de Audio Multimodal directa con Gemini 3.6 Flash
+  if (state.audioBlob || state.currentFile) {
+    if (!apiKey) {
+      const keyInput = document.getElementById('gemini-api-key-input');
+      if (keyInput) {
+        keyInput.focus();
+        keyInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      showToast("Ingresa tu clave de Gemini en la tarjeta de abajo para transcribir el audio, o pulsa 'Dictar por voz'.", true);
+      return;
+    }
     if (processingOverlay) processingOverlay.classList.remove('hidden');
     try {
       const audioToProcess = state.audioBlob || state.currentFile;
@@ -825,42 +928,46 @@ async function runAIProcessing() {
         resultsContainer.classList.remove('hidden');
         resultsContainer.scrollIntoView({ behavior: 'smooth' });
       }
-      showToast("¡Audio transcrito y analizado con éxito por Google Gemini!");
+      showToast("¡Audio transcrito y analizado con éxito por Google Gemini 3.6 Flash!");
       return;
     } catch (err) {
       console.error("Error procesando audio con Gemini:", err);
       if (processingOverlay) processingOverlay.classList.add('hidden');
-      showToast(`Error de Gemini: ${err.message}.`, true);
+      showToast(`Error de Gemini al procesar audio: ${err.message}.`, true);
       return;
     }
   }
 
-  // CASO 2: Hay texto transcrito (por dictado o notas) -> Analizar localmente
+  // CASO 2: Hay texto transcrito (por dictado o notas)
   if (rawText) {
     if (processingOverlay) processingOverlay.classList.remove('hidden');
-    if (statusText) statusText.textContent = "Analizando texto transcrito y estructurando compromisos...";
-
-    setTimeout(() => {
+    try {
+      if (apiKey) {
+        const meetingData = await processTextWithGemini(rawText, userTitle, userAttendees);
+        renderMeetingResults(meetingData);
+      } else {
+        const meetingData = analyzeMeetingTranscript(rawText, userTitle, userAttendees);
+        renderMeetingResults(meetingData);
+      }
       if (processingOverlay) processingOverlay.classList.add('hidden');
-      const meetingData = analyzeMeetingTranscript(rawText, userTitle, userAttendees);
-      renderMeetingResults(meetingData);
       if (resultsContainer) {
         resultsContainer.classList.remove('hidden');
         resultsContainer.scrollIntoView({ behavior: 'smooth' });
       }
       showToast("Minuta y acuerdos generados exitosamente.");
-    }, 750);
-    return;
-  }
-
-  // CASO 3: Hay audio grabado pero no hay texto y no hay clave de Gemini
-  if (state.audioBlob || state.currentFile) {
-    const keyInput = document.getElementById('gemini-api-key-input');
-    if (keyInput) {
-      keyInput.focus();
-      keyInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    } catch (err) {
+      console.warn("Falla en API remota, usando motor local NLP:", err);
+      const meetingData = analyzeMeetingTranscript(rawText, userTitle, userAttendees);
+      renderMeetingResults(meetingData);
+      if (processingOverlay) processingOverlay.classList.add('hidden');
+      if (resultsContainer) {
+        resultsContainer.classList.remove('hidden');
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+      }
+      showToast("Minuta generada con éxito (Modo Local).");
+      return;
     }
-    showToast("Para que el modelo escuche tu audio grabado en la nube, ingresa tu clave gratuita de Gemini abajo, o pulsa 'Dictar por voz'.", true);
   }
 }
 
