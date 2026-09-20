@@ -201,13 +201,112 @@ function setupSpeechRecognition() {
   }
 }
 
-// Escuchadores de la caja de transcripción (edición y conteo de palabras)
+// Escuchadores de la caja de transcripción (edición, dictado y clave de Gemini)
 function setupTranscriptionListeners() {
   const transcriptInput = document.getElementById('meeting-transcription-input');
   const btnClear = document.getElementById('btn-clear-transcript');
   const toggleRaw = document.getElementById('toggle-raw-transcript');
   const resultRaw = document.getElementById('result-raw-transcript');
   const toggleText = document.getElementById('toggle-transcript-text');
+
+  // Gestión de clave de Gemini API
+  const keyInput = document.getElementById('gemini-api-key-input');
+  const btnSaveKey = document.getElementById('btn-save-gemini-key');
+  const keyStatus = document.getElementById('gemini-key-status');
+
+  const updateKeyStatus = (hasKey) => {
+    if (!keyStatus) return;
+    if (hasKey) {
+      keyStatus.textContent = "✓ Clave Activa (Gemini 2.0 Flash)";
+      keyStatus.className = "text-[10px] px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800 border border-emerald-200";
+    } else {
+      keyStatus.textContent = "Modo Local (Sin Clave)";
+      keyStatus.className = "text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800 border border-amber-200";
+    }
+  };
+
+  const savedKey = localStorage.getItem('air_gemini_api_key') || '';
+  if (savedKey) {
+    if (keyInput) keyInput.value = savedKey;
+    updateKeyStatus(true);
+  }
+
+  if (btnSaveKey && keyInput) {
+    btnSaveKey.addEventListener('click', () => {
+      const val = keyInput.value.trim();
+      if (val) {
+        localStorage.setItem('air_gemini_api_key', val);
+        updateKeyStatus(true);
+        showToast("Clave de Gemini guardada en tu navegador.");
+      } else {
+        localStorage.removeItem('air_gemini_api_key');
+        updateKeyStatus(false);
+        showToast("Clave de Gemini removida.");
+      }
+    });
+  }
+
+  // Dictado por voz independiente (Web Speech API universal)
+  const btnDictate = document.getElementById('btn-toggle-dictate');
+  const dictateText = document.getElementById('dictate-btn-text');
+  let dictateRecognition = null;
+  let isDictating = false;
+
+  if (btnDictate && transcriptInput) {
+    btnDictate.addEventListener('click', () => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        showToast("El dictado no está soportado en este navegador. Escribe directamente.", true);
+        return;
+      }
+
+      if (!isDictating) {
+        try {
+          dictateRecognition = new SpeechRecognition();
+          dictateRecognition.lang = 'es-ES';
+          dictateRecognition.continuous = true;
+          dictateRecognition.interimResults = true;
+
+          dictateRecognition.onstart = () => {
+            isDictating = true;
+            if (dictateText) dictateText.textContent = "Detener Dictado";
+            btnDictate.className = "px-2.5 py-1 bg-red-600 text-white rounded text-[11px] font-medium transition cursor-pointer flex items-center space-x-1 animate-pulse";
+            showToast("🎙️ Dictando... Habla frente al micrófono.");
+          };
+
+          dictateRecognition.onresult = (e) => {
+            let res = '';
+            for (let i = 0; i < e.results.length; i++) {
+              res += e.results[i][0].transcript + ' ';
+            }
+            transcriptInput.value = res.trim();
+            updateWordCount(res.trim());
+            enableProcessButton();
+          };
+
+          dictateRecognition.onerror = (e) => {
+            console.warn("Dictate notice:", e.error);
+          };
+
+          dictateRecognition.onend = () => {
+            isDictating = false;
+            if (dictateText) dictateText.textContent = "Dictar por voz";
+            btnDictate.className = "px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded text-[11px] font-medium transition cursor-pointer flex items-center space-x-1";
+          };
+
+          dictateRecognition.start();
+        } catch (err) {
+          console.warn("Error iniciando dictado:", err);
+        }
+      } else {
+        if (dictateRecognition) dictateRecognition.stop();
+        isDictating = false;
+        if (dictateText) dictateText.textContent = "Dictar por voz";
+        btnDictate.className = "px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded text-[11px] font-medium transition cursor-pointer flex items-center space-x-1";
+        showToast("Dictado detenido. Texto listo.");
+      }
+    });
+  }
 
   if (transcriptInput) {
     transcriptInput.addEventListener('input', () => {
@@ -304,8 +403,35 @@ function setupRecordingControls() {
       recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span> Audio y texto listos`;
       recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200";
     }
-    showToast("Audio guardado y transcrito correctamente.");
+    showToast("Audio guardado y listo para escuchar o procesar.");
   });
+
+  // Botón para descartar audio y volver a grabar
+  const btnDiscard = document.getElementById('btn-discard-audio');
+  if (btnDiscard) {
+    btnDiscard.addEventListener('click', () => {
+      state.audioBlob = null;
+      state.audioChunks = [];
+      state.recordedSeconds = 0;
+      updateTimerDisplay();
+
+      const previewContainer = document.getElementById('audio-preview-container');
+      const audioPlayback = document.getElementById('audio-playback');
+      if (previewContainer) previewContainer.classList.add('hidden');
+      if (audioPlayback) {
+        audioPlayback.pause();
+        audioPlayback.src = '';
+      }
+
+      drawEmptyWaveform();
+
+      if (recordStatus) {
+        recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400 mr-2"></span> Sistema Listo`;
+        recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200";
+      }
+      showToast("Audio descartado. Puedes volver a grabar.");
+    });
+  }
 }
 
 function startRecording(stream) {
@@ -315,6 +441,10 @@ function startRecording(stream) {
   state.recordedSeconds = 0;
   updateTimerDisplay();
 
+  // Ocultar reproductor previo si existía
+  const previewContainer = document.getElementById('audio-preview-container');
+  if (previewContainer) previewContainer.classList.add('hidden');
+
   state.recordTimerInterval = setInterval(() => {
     if (!state.paused) {
       state.recordedSeconds++;
@@ -322,7 +452,7 @@ function startRecording(stream) {
     }
   }, 1000);
 
-  // Iniciar SpeechRecognition
+  // Iniciar SpeechRecognition si está disponible
   if (state.recognition) {
     try {
       state.recognition.start();
@@ -340,6 +470,24 @@ function startRecording(stream) {
     state.audioBlob = new Blob(state.audioChunks, { type: 'audio/webm' });
     stream.getTracks().forEach(track => track.stop());
     enableProcessButton();
+
+    // Mostrar reproductor de audio ("Cuadra ese audio")
+    const previewContainer = document.getElementById('audio-preview-container');
+    const audioPlayback = document.getElementById('audio-playback');
+    const durationText = document.getElementById('recorded-duration-text');
+
+    if (previewContainer && audioPlayback) {
+      if (state.audioBlobUrl) URL.revokeObjectURL(state.audioBlobUrl);
+      state.audioBlobUrl = URL.createObjectURL(state.audioBlob);
+      audioPlayback.src = state.audioBlobUrl;
+      previewContainer.classList.remove('hidden');
+
+      if (durationText) {
+        const mins = String(Math.floor(state.recordedSeconds / 60)).padStart(2, '0');
+        const secs = String(state.recordedSeconds % 60).padStart(2, '0');
+        durationText.textContent = `${mins}:${secs}`;
+      }
+    }
   };
   state.mediaRecorder.start(250);
 
@@ -532,55 +680,188 @@ function setupActionButtons() {
   }
 }
 
-function runAIProcessing() {
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64data = reader.result.split(',')[1];
+      resolve(base64data);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function processAudioWithGemini(audioBlob, userTitle, userAttendees) {
+  const apiKey = localStorage.getItem('air_gemini_api_key') || '';
+  const statusText = document.getElementById('processing-step-text');
+
+  if (statusText) statusText.textContent = "Preparando audio y convirtiendo para el modelo Google Gemini 2.0 Flash...";
+
+  const base64Data = await blobToBase64(audioBlob);
+
+  if (statusText) statusText.textContent = "El modelo Gemini está escuchando el audio y transcribiendo en la nube...";
+
+  const prompt = `Eres un modelo de inteligencia artificial de última generación especializado en transcripción fonética y redacción de actas de reuniones en español.
+Escucha con absoluta atención el audio adjunto en español.
+${userTitle ? `Título sugerido por el usuario: "${userTitle}".` : ''}
+${userAttendees ? `Participantes convocados sugeridos: "${userAttendees}".` : ''}
+
+Debes realizar:
+1. Transcribir literalmente cada palabra pronunciada en el audio.
+2. Redactar un resumen ejecutivo corporativo y fiel de lo que se habló.
+3. Extraer los acuerdos formalizados y las tareas o compromisos asignados a los participantes con sus fechas.
+
+Devuelve ÚNICAMENTE un objeto JSON estrictamente válido con esta estructura:
+{
+  "transcripcion": "Texto completo y exacto de todo lo que se habló en el audio...",
+  "titulo": "Título formal de la sesión",
+  "resumenEjecutivo": "Resumen ejecutivo profesional, fluido y estructurado de los temas y decisiones...",
+  "participantes": ["Nombre 1", "Nombre 2"],
+  "temasTratados": [
+    {"tiempo": "00:00", "tema": "Título del tema", "detalle": "Detalle de lo discutido..."}
+  ],
+  "acuerdos": [
+    {"id": "AC-01", "descripcion": "Acuerdo o resolución acordada...", "impacto": "Alto"}
+  ],
+  "tareas": [
+    {"id": "TAR-01", "tarea": "Descripción del compromiso...", "responsable": "Nombre del asignado", "plazo": "2026-10-10 17:00", "prioridad": "Alta", "completada": false}
+  ]
+}`;
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            {
+              inlineData: {
+                mimeType: audioBlob.type || 'audio/webm',
+                data: base64Data
+              }
+            },
+            {
+              text: prompt
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `Error HTTP ${response.status} de Gemini API`);
+  }
+
+  const result = await response.json();
+  const textOutput = result.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!textOutput) {
+    throw new Error("El modelo Gemini no devolvió respuesta de audio.");
+  }
+
+  const parsed = JSON.parse(textOutput);
+  
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+  return {
+    titulo: userTitle || parsed.titulo || `Sesión de Trabajo — ${dateStr}`,
+    fechaHora: `${dateStr} ${timeStr}`,
+    duracion: state.recordedSeconds > 0 ? `${Math.floor(state.recordedSeconds / 60)} min ${state.recordedSeconds % 60} s` : "Nota de voz grabada",
+    participantes: (userAttendees && userAttendees.trim()) 
+      ? userAttendees.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean)
+      : (parsed.participantes && parsed.participantes.length > 0 ? parsed.participantes : ["Participante Principal", "Equipo de Trabajo"]),
+    resumenEjecutivo: parsed.resumenEjecutivo || "Resumen procesado por Gemini.",
+    temasTratados: parsed.temasTratados || [],
+    acuerdos: parsed.acuerdos || [],
+    tareas: parsed.tareas || [],
+    transcripcionOriginal: parsed.transcripcion || ""
+  };
+}
+
+async function runAIProcessing() {
   const processingOverlay = document.getElementById('processing-indicator');
   const resultsContainer = document.getElementById('results-container');
   const meetingTitleInput = document.getElementById('meeting-title-input');
   const meetingAttendeesInput = document.getElementById('meeting-attendees-input');
   const transcriptInput = document.getElementById('meeting-transcription-input');
+  const statusText = document.getElementById('processing-step-text');
   
   const rawText = transcriptInput ? transcriptInput.value.trim() : state.rawTranscription.trim();
   const userTitle = meetingTitleInput ? meetingTitleInput.value.trim() : '';
   const userAttendees = meetingAttendeesInput ? meetingAttendeesInput.value.trim() : '';
+  const apiKey = localStorage.getItem('air_gemini_api_key') || '';
 
+  // Validar si no hay absolutamente nada
   if (!rawText && !state.audioBlob && !state.currentFile) {
-    showToast("Por favor graba audio, escribe en la transcripción o pulsa 'Cargar Ejemplo'.", true);
+    showToast("Por favor graba audio primero, o pulsa 'Cargar Ejemplo'.", true);
     return;
   }
 
-  if (processingOverlay) processingOverlay.classList.remove('hidden');
-
-  let step = 1;
-  const statusText = document.getElementById('processing-step-text');
-  
-  const stepInterval = setInterval(() => {
-    step++;
-    if (step === 2 && statusText) {
-      statusText.textContent = "Convirtiendo nota de voz a texto y separando oraciones clave...";
-    } else if (step === 3 && statusText) {
-      statusText.textContent = "Sintetizando resumen ejecutivo y asignando compromisos a los participantes...";
-    } else if (step >= 4) {
-      clearInterval(stepInterval);
-      if (processingOverlay) processingOverlay.classList.add('hidden');
+  // CASO 1: Audio grabado o subido + Clave de Gemini presente -> Transcripción Multimodal directa con IA
+  if (apiKey && (state.audioBlob || state.currentFile)) {
+    if (processingOverlay) processingOverlay.classList.remove('hidden');
+    try {
+      const audioToProcess = state.audioBlob || state.currentFile;
+      const meetingData = await processAudioWithGemini(audioToProcess, userTitle, userAttendees);
       
-      let meetingData;
-      if (rawText) {
-        // MOTOR NLP DINÁMICO: analiza el texto real hablado o transcrito
-        meetingData = analyzeMeetingTranscript(rawText, userTitle, userAttendees);
-      } else {
-        const title = userTitle || DEMO_MEETING.titulo;
-        meetingData = { ...DEMO_MEETING, titulo: title };
+      if (transcriptInput && meetingData.transcripcionOriginal) {
+        transcriptInput.value = meetingData.transcripcionOriginal;
+        updateWordCount(meetingData.transcripcionOriginal);
       }
 
       renderMeetingResults(meetingData);
-      
+      if (processingOverlay) processingOverlay.classList.add('hidden');
       if (resultsContainer) {
         resultsContainer.classList.remove('hidden');
         resultsContainer.scrollIntoView({ behavior: 'smooth' });
       }
-      showToast("Minuta y acuerdos generados exitosamente con base en tu nota grabada.");
+      showToast("¡Audio transcrito y analizado con éxito por Google Gemini!");
+      return;
+    } catch (err) {
+      console.error("Error procesando audio con Gemini:", err);
+      if (processingOverlay) processingOverlay.classList.add('hidden');
+      showToast(`Error de Gemini: ${err.message}.`, true);
+      return;
     }
-  }, 750);
+  }
+
+  // CASO 2: Hay texto transcrito (por dictado o notas) -> Analizar localmente
+  if (rawText) {
+    if (processingOverlay) processingOverlay.classList.remove('hidden');
+    if (statusText) statusText.textContent = "Analizando texto transcrito y estructurando compromisos...";
+
+    setTimeout(() => {
+      if (processingOverlay) processingOverlay.classList.add('hidden');
+      const meetingData = analyzeMeetingTranscript(rawText, userTitle, userAttendees);
+      renderMeetingResults(meetingData);
+      if (resultsContainer) {
+        resultsContainer.classList.remove('hidden');
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+      }
+      showToast("Minuta y acuerdos generados exitosamente.");
+    }, 750);
+    return;
+  }
+
+  // CASO 3: Hay audio grabado pero no hay texto y no hay clave de Gemini
+  if (state.audioBlob || state.currentFile) {
+    const keyInput = document.getElementById('gemini-api-key-input');
+    if (keyInput) {
+      keyInput.focus();
+      keyInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    showToast("Para que el modelo escuche tu audio grabado en la nube, ingresa tu clave gratuita de Gemini abajo, o pulsa 'Dictar por voz'.", true);
+  }
 }
 
 /**
