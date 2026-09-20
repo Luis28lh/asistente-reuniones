@@ -1,0 +1,924 @@
+/**
+ * AIR — Asistente Inteligente de Reuniones
+ * Lógica principal: Captura de audio, simulación / ingesta IA, gestión de actas y exportación
+ */
+
+// Estado global de la aplicación
+const state = {
+  recording: false,
+  paused: false,
+  recordStartTime: null,
+  recordTimerInterval: null,
+  recordedSeconds: 0,
+  mediaRecorder: null,
+  audioChunks: [],
+  audioBlob: null,
+  audioContext: null,
+  analyser: null,
+  dataArray: null,
+  animationFrameId: null,
+  currentFile: null,
+  currentMeetingData: null,
+  chatHistory: []
+};
+
+// Datos oficiales de prueba y demostración (Transcripción de prueba del Agente de Reuniones - 6 de octubre de 2026)
+const DEMO_MEETING = {
+  titulo: "Reunión de Seguimiento Operativo, Propuestas y Sistema",
+  fechaHora: "2026-10-06 09:00 AM - 10:12 AM",
+  duracion: "1 hora 12 min",
+  participantes: [
+    "Laura Méndez (Gerente general)",
+    "Miguel Santos (Coordinador comercial)",
+    "Ana Rodríguez (Encargada administrativa)",
+    "Carlos Peña (Responsable de tecnología y operaciones)"
+  ],
+  resumenEjecutivo: "En la sesión se levantó el bloqueo comercial del cliente Nova Caribe tras confirmar continuidad con nuevas cantidades; se acordó preparar la propuesta final para el viernes 9 de octubre mediante un modelo de subtareas y dependencias entre áreas técnicas, administrativas y comerciales para alertar riesgos a tiempo. Se aprobó una política estricta de ordenamiento documental con control de versiones (carpetas Actual, Versiones y Evidencias, prefijos fijos continuos RG, RC, RA, RP y eliminación restringida exclusivamente al administrador con registro de auditoría). Se planificó la prueba piloto interna del nuevo sistema de seguimiento del 15 al 22 de octubre, precedida por una guía de usuario elaborada por Ana. Asimismo, se consensuaron los indicadores para el tablero gerencial y se fijó un recordatorio de seguimiento comercial para el cliente Horizonte.",
+  temasTratados: [
+    { tiempo: "09:00", tema: "Estatus de compromisos anteriores y caso Nova Caribe", detalle: "De 7 compromisos previos: 4 completados, 2 pendientes y 1 desbloqueado. Nova Caribe confirmó continuidad con nueva solicitud de cotización." },
+    { tiempo: "09:12", tema: "Modelo de subtareas y dependencias en propuestas", detalle: "Aprobación de dependencias entre áreas comerciales, técnicas y administrativas para alertar riesgos en la fecha de entrega al cliente." },
+    { tiempo: "09:20", tema: "Organización de archivos y control de versiones", detalle: "Estructura unificada con prefijos fijos (RG, RC, RA, RP), carpetas Actual/Versiones/Evidencias y eliminación restringida a administradores con auditoría." },
+    { tiempo: "09:28", tema: "Plan de migración documental por fases", detalle: "Fase inicial: clasificación de expedientes desde julio a septiembre a cargo de Ana y Miguel." },
+    { tiempo: "09:41", tema: "Confirmación de reuniones y reglas de alertas", detalle: "Automatización de respuestas por correo y registro manual auditado de llamadas. Alertas a 48h y 24h. Criterios de escalamiento a Gerencia." },
+    { tiempo: "09:50", tema: "Piloto del nuevo sistema de seguimiento", detalle: "Prueba interna del 15 al 22 de octubre con los cuatro líderes. Guía de usuario a entregar el 14 de octubre por Ana." },
+    { tiempo: "09:55", tema: "Indicadores del Tablero Gerencial (KPIs)", detalle: "Definición de métricas comerciales, administrativas y de monitoreo técnico. Entrega de diseño funcional el 19 de octubre por Carlos." },
+    { tiempo: "10:09", tema: "Seguimiento al Cliente Horizonte y Cierre", detalle: "Llamada de contacto programada para el 9 de octubre. Entrega de minuta hoy antes de las 4:00 PM con 24h para observaciones." }
+  ],
+  acuerdos: [
+    { id: "AC-01", descripcion: "Aprobada la lógica de subtareas y dependencias entre áreas para toda actividad con múltiples involucrados.", impacto: "Alto" },
+    { id: "AC-02", descripcion: "Aprobado el formato de nomenclatura y carpetas con identificadores fijos y continuos (RG, RC, RA, RP).", impacto: "Alto" },
+    { id: "AC-03", descripcion: "La eliminación de versiones aprobadas queda restringida exclusivamente al administrador con registro de auditoría.", impacto: "Alto" },
+    { id: "AC-04", descripcion: "El registro de confirmaciones de reuniones debe auditar responsable, canal y hora exacta sin interpretar mensajes ambiguos.", impacto: "Medio" },
+    { id: "AC-05", descripcion: "Gerencia solo recibirá alertas de alta prioridad, tareas vencidas por más de 1 día y procesos fallidos tras 3 reintentos.", impacto: "Medio" },
+    { id: "AC-06", descripcion: "La prueba interna del sistema se realizará del 15 al 22 de octubre entre los cuatro participantes presentes.", impacto: "Estratégico" },
+    { id: "AC-07", descripcion: "Aprobada la matriz de indicadores comerciales, administrativos y técnicos para el tablero de control.", impacto: "Operativo" }
+  ],
+  tareas: [
+    { id: "TAR-01", tarea: "Entregar costos administrativos de la propuesta Nova Caribe", responsable: "Ana Rodríguez", plazo: "2026-10-07 14:00", prioridad: "Alta", completada: false },
+    { id: "TAR-02", tarea: "Validar tiempo de instalación e inventario de equipos para Nova Caribe", responsable: "Carlos Peña", plazo: "2026-10-07 17:00", prioridad: "Alta", completada: false },
+    { id: "TAR-03", tarea: "Preparar borrador de la propuesta Nova Caribe", responsable: "Miguel Santos", plazo: "2026-10-08", prioridad: "Alta", completada: false },
+    { id: "TAR-04", tarea: "Enviar propuesta final revisada a Nova Caribe (copiando a Laura)", responsable: "Miguel Santos", plazo: "2026-10-09 12:00", prioridad: "Alta", completada: false },
+    { id: "TAR-05", tarea: "Llamada de contacto y seguimiento al cliente Horizonte", responsable: "Miguel Santos", plazo: "2026-10-09 16:00", prioridad: "Media", completada: false },
+    { id: "TAR-06", tarea: "Crear estructura de carpetas y reglas de nombres de archivos en el sistema", responsable: "Carlos Peña", plazo: "2026-10-12", prioridad: "Alta", completada: false },
+    { id: "TAR-07", tarea: "Entregar guía de usuario de una página para la prueba interna", responsable: "Ana Rodríguez", plazo: "2026-10-14 16:00", prioridad: "Alta", completada: false },
+    { id: "TAR-08", tarea: "Habilitar accesos y configurar reglas de alertas en el prototipo", responsable: "Carlos Peña", plazo: "2026-10-15", prioridad: "Alta", completada: false },
+    { id: "TAR-09", tarea: "Clasificar documentos históricos de julio a septiembre", responsable: "Ana Rodríguez", plazo: "2026-10-16", prioridad: "Media", completada: false },
+    { id: "TAR-10", tarea: "Entregar definiciones exactas de indicadores comerciales para el tablero", responsable: "Miguel Santos", plazo: "2026-10-16 15:00", prioridad: "Media", completada: false },
+    { id: "TAR-11", tarea: "Entregar definiciones exactas de indicadores administrativos para el tablero", responsable: "Ana Rodríguez", plazo: "2026-10-16 17:00", prioridad: "Media", completada: false },
+    { id: "TAR-12", tarea: "Entregar diseño funcional del tablero mensual de control", responsable: "Carlos Peña", plazo: "2026-10-19", prioridad: "Alta", completada: false },
+    { id: "TAR-13", tarea: "Revisar expedientes comerciales migrados (cliente y proyecto)", responsable: "Miguel Santos", plazo: "2026-10-20", prioridad: "Media", completada: false },
+    { id: "TAR-14", tarea: "Enviar minuta de la sesión actual para revisión del equipo", responsable: "Ana Rodríguez", plazo: "2026-10-06 16:00", prioridad: "Alta", completada: true }
+  ]
+};
+
+// Inicialización cuando carga el DOM
+document.addEventListener('DOMContentLoaded', () => {
+  setupTabs();
+  setupRecordingControls();
+  setupDragAndDrop();
+  setupActionButtons();
+  setupChat();
+  setupDemoLoader();
+  setupHelpModal();
+  
+  // Inicializar canvas responsive
+  resizeCanvas();
+  drawEmptyWaveform();
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    if (!state.recording) drawEmptyWaveform();
+  });
+});
+
+// Pestañas (Grabación en vivo vs Subir archivo)
+function setupTabs() {
+  const tabRecord = document.getElementById('tab-record');
+  const tabUpload = document.getElementById('tab-upload');
+  const panelRecord = document.getElementById('panel-record');
+  const panelUpload = document.getElementById('panel-upload');
+
+  if (!tabRecord || !tabUpload) return;
+
+  tabRecord.addEventListener('click', () => {
+    tabRecord.className = "flex-1 py-2 px-4 text-xs font-semibold uppercase tracking-wider rounded-md bg-white text-zinc-900 shadow-sm border border-zinc-200";
+    tabUpload.className = "flex-1 py-2 px-4 text-xs font-semibold uppercase tracking-wider rounded-md text-zinc-500 hover:text-zinc-800";
+    panelRecord.classList.remove('hidden');
+    panelUpload.classList.add('hidden');
+  });
+
+  tabUpload.addEventListener('click', () => {
+    tabUpload.className = "flex-1 py-2 px-4 text-xs font-semibold uppercase tracking-wider rounded-md bg-white text-zinc-900 shadow-sm border border-zinc-200";
+    tabRecord.className = "flex-1 py-2 px-4 text-xs font-semibold uppercase tracking-wider rounded-md text-zinc-500 hover:text-zinc-800";
+    panelUpload.classList.remove('hidden');
+    panelRecord.classList.add('hidden');
+  });
+}
+
+// Controles de grabación con Web Audio API
+function setupRecordingControls() {
+  const btnStart = document.getElementById('btn-start-record');
+  const btnPause = document.getElementById('btn-pause-record');
+  const btnStop = document.getElementById('btn-stop-record');
+  const recordStatus = document.getElementById('record-status-pill');
+
+  if (!btnStart) return;
+
+  btnStart.addEventListener('click', async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      startRecording(stream);
+      btnStart.classList.add('hidden');
+      btnPause.classList.remove('hidden');
+      btnStop.classList.remove('hidden');
+      if (recordStatus) {
+        recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 recording-pulse mr-2"></span> Grabando audio en vivo`;
+        recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800 border border-zinc-300";
+      }
+    } catch (err) {
+      console.warn("Acceso a micrófono no disponible o denegado:", err);
+      showToast("No se pudo acceder al micrófono. Verifica los permisos del navegador.", true);
+    }
+  });
+
+  btnPause.addEventListener('click', () => {
+    if (!state.mediaRecorder) return;
+    if (state.paused) {
+      state.mediaRecorder.resume();
+      state.paused = false;
+      btnPause.innerHTML = `<svg class="w-4 h-4 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg> Pausar`;
+      if (recordStatus) recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 recording-pulse mr-2"></span> Grabando audio en vivo`;
+    } else {
+      state.mediaRecorder.pause();
+      state.paused = true;
+      btnPause.innerHTML = `<svg class="w-4 h-4 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Reanudar`;
+      if (recordStatus) recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500 mr-2"></span> Grabación pausada`;
+    }
+  });
+
+  btnStop.addEventListener('click', () => {
+    stopRecording();
+    btnStart.classList.remove('hidden');
+    btnPause.classList.add('hidden');
+    btnStop.classList.add('hidden');
+    if (recordStatus) {
+      recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span> Audio capturado con éxito`;
+      recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800 border border-zinc-300";
+    }
+  });
+}
+
+function startRecording(stream) {
+  state.audioChunks = [];
+  state.recording = true;
+  state.paused = false;
+  state.recordedSeconds = 0;
+  updateTimerDisplay();
+
+  state.recordTimerInterval = setInterval(() => {
+    if (!state.paused) {
+      state.recordedSeconds++;
+      updateTimerDisplay();
+    }
+  }, 1000);
+
+  // Inicializar MediaRecorder
+  state.mediaRecorder = new MediaRecorder(stream);
+  state.mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) state.audioChunks.push(e.data);
+  };
+  state.mediaRecorder.onstop = () => {
+    state.audioBlob = new Blob(state.audioChunks, { type: 'audio/webm' });
+    stream.getTracks().forEach(track => track.stop());
+    enableProcessButton();
+  };
+  state.mediaRecorder.start(250);
+
+  // Inicializar AudioContext para visualizar ondas de audio
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    state.audioContext = new AudioContext();
+    const source = state.audioContext.createMediaStreamSource(stream);
+    state.analyser = state.audioContext.createAnalyser();
+    state.analyser.fftSize = 64;
+    source.connect(state.analyser);
+    state.dataArray = new Uint8Array(state.analyser.frequencyBinCount);
+    visualizeAudio();
+  } catch (e) {
+    console.warn("Visualizador Web Audio no soportado:", e);
+  }
+}
+
+function stopRecording() {
+  state.recording = false;
+  if (state.recordTimerInterval) clearInterval(state.recordTimerInterval);
+  if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+    state.mediaRecorder.stop();
+  }
+  if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+  drawEmptyWaveform();
+}
+
+function updateTimerDisplay() {
+  const timerEl = document.getElementById('record-timer');
+  if (!timerEl) return;
+  const mins = String(Math.floor(state.recordedSeconds / 60)).padStart(2, '0');
+  const secs = String(state.recordedSeconds % 60).padStart(2, '0');
+  timerEl.textContent = `00:${mins}:${secs}`;
+}
+
+// Redimensionamiento dinámico del canvas según pantalla
+function resizeCanvas() {
+  const canvas = document.getElementById('audio-waveform');
+  if (!canvas || !canvas.parentElement) return;
+  const parentWidth = canvas.parentElement.clientWidth;
+  if (parentWidth > 0) {
+    canvas.width = Math.min(600, parentWidth - 32);
+    canvas.height = 70;
+  }
+}
+
+// Visualizador de ondas en canvas (grises neutros y adaptativo)
+function visualizeAudio() {
+  const canvas = document.getElementById('audio-waveform');
+  if (!canvas || !state.analyser) return;
+  const ctx = canvas.getContext('2d');
+
+  function draw() {
+    if (!state.recording) return;
+    state.animationFrameId = requestAnimationFrame(draw);
+
+    const width = canvas.width;
+    const height = canvas.height;
+
+    state.analyser.getByteFrequencyData(state.dataArray);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, width, height);
+
+    const barWidth = (width / state.dataArray.length) * 1.6;
+    let x = 0;
+
+    for (let i = 0; i < state.dataArray.length; i++) {
+      const barHeight = (state.dataArray[i] / 255) * (height * 0.85);
+      // Tonos neutros / grises pizarra
+      ctx.fillStyle = i % 2 === 0 ? '#64748b' : '#94a3b8';
+      ctx.fillRect(x, (height - barHeight) / 2, barWidth - 2, barHeight || 3);
+      x += barWidth;
+    }
+  }
+  draw();
+}
+
+function drawEmptyWaveform() {
+  const canvas = document.getElementById('audio-waveform');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Línea sutil horizontal de reposo
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(10, canvas.height / 2);
+  ctx.lineTo(canvas.width - 10, canvas.height / 2);
+  ctx.stroke();
+}
+
+// Carga de archivo por Drag & Drop o Input
+function setupDragAndDrop() {
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+  const fileInfo = document.getElementById('file-info-badge');
+
+  if (!dropzone || !fileInput) return;
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dropzone-active');
+    }, false);
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dropzone-active');
+    }, false);
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleSelectedFile(files[0]);
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) handleSelectedFile(e.target.files[0]);
+  });
+}
+
+function handleSelectedFile(file) {
+  state.currentFile = file;
+  const fileBadge = document.getElementById('file-info-badge');
+  const fileNameEl = document.getElementById('file-name-display');
+  const fileSizeEl = document.getElementById('file-size-display');
+
+  if (fileBadge && fileNameEl) {
+    fileNameEl.textContent = file.name;
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+    if (fileSizeEl) fileSizeEl.textContent = `${sizeMb} MB · ${file.type || 'audio'}`;
+    fileBadge.classList.remove('hidden');
+  }
+
+  enableProcessButton();
+  showToast(`Archivo "${file.name}" cargado correctamente.`);
+}
+
+function enableProcessButton() {
+  const btnProcess = document.getElementById('btn-process-ai');
+  if (btnProcess) {
+    btnProcess.disabled = false;
+    btnProcess.className = "w-full py-3 px-6 bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-sm rounded-lg shadow-sm flex items-center justify-center transition cursor-pointer";
+  }
+}
+
+// Procesamiento de IA y Generación de Minuta
+function setupActionButtons() {
+  const btnProcess = document.getElementById('btn-process-ai');
+  if (btnProcess) {
+    btnProcess.addEventListener('click', () => {
+      runAIProcessing();
+    });
+  }
+
+  const btnExportPdf = document.getElementById('btn-export-pdf');
+  if (btnExportPdf) {
+    btnExportPdf.addEventListener('click', () => {
+      exportMeetingToPdf();
+    });
+  }
+
+  const btnCopyMarkdown = document.getElementById('btn-copy-markdown');
+  if (btnCopyMarkdown) {
+    btnCopyMarkdown.addEventListener('click', () => {
+      copyMeetingAsMarkdown();
+    });
+  }
+
+  const btnSendEmail = document.getElementById('btn-send-email');
+  if (btnSendEmail) {
+    btnSendEmail.addEventListener('click', () => {
+      openEmailDistributionModal();
+    });
+  }
+}
+
+function runAIProcessing() {
+  const processingOverlay = document.getElementById('processing-indicator');
+  const resultsContainer = document.getElementById('results-container');
+  const meetingTitleInput = document.getElementById('meeting-title-input');
+  
+  if (processingOverlay) processingOverlay.classList.remove('hidden');
+
+  // Simulación de pipeline de IA (Audio Ingest -> Diarization -> Extraction)
+  let step = 1;
+  const statusText = document.getElementById('processing-step-text');
+  
+  const stepInterval = setInterval(() => {
+    step++;
+    if (step === 2 && statusText) {
+      statusText.textContent = "Transcribiendo fonética y separando interlocutores...";
+    } else if (step === 3 && statusText) {
+      statusText.textContent = "Sintetizando minuta ejecutiva y extrayendo acuerdos...";
+    } else if (step >= 4) {
+      clearInterval(stepInterval);
+      if (processingOverlay) processingOverlay.classList.add('hidden');
+      
+      // Personalizar datos si el usuario colocó título
+      const title = (meetingTitleInput && meetingTitleInput.value.trim()) ? meetingTitleInput.value.trim() : DEMO_MEETING.titulo;
+      const meetingData = { ...DEMO_MEETING, titulo: title };
+      renderMeetingResults(meetingData);
+      
+      if (resultsContainer) {
+        resultsContainer.classList.remove('hidden');
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+      }
+      showToast("Minuta y acuerdos generados exitosamente con IA.");
+    }
+  }, 900);
+}
+
+// Renderizado de la minuta en la interfaz con estética en grises neutros
+function renderMeetingResults(data) {
+  state.currentMeetingData = data;
+
+  // Encabezados
+  const titleEl = document.getElementById('result-title');
+  const metaEl = document.getElementById('result-meta');
+  const summaryEl = document.getElementById('result-summary');
+  const attendeesListEl = document.getElementById('result-attendees');
+
+  if (titleEl) titleEl.textContent = data.titulo;
+  if (metaEl) metaEl.textContent = `${data.fechaHora} · Duración: ${data.duracion}`;
+  if (summaryEl) summaryEl.textContent = data.resumenEjecutivo;
+
+  if (attendeesListEl) {
+    attendeesListEl.innerHTML = data.participantes.map(p => `
+      <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
+        ${p}
+      </span>
+    `).join('');
+  }
+
+  // Temas tratados
+  const topicsContainer = document.getElementById('result-topics');
+  if (topicsContainer) {
+    topicsContainer.innerHTML = data.temasTratados.map(t => `
+      <div class="p-3 bg-zinc-50 border border-zinc-200 rounded-lg flex items-start space-x-3">
+        <span class="inline-block px-2 py-0.5 bg-zinc-200 text-zinc-800 font-mono text-xs rounded font-medium mt-0.5">${t.tiempo}</span>
+        <div>
+          <h4 class="text-xs font-semibold text-zinc-900">${t.tema}</h4>
+          <p class="text-xs text-zinc-600 mt-0.5">${t.detalle}</p>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Acuerdos
+  const agreementsContainer = document.getElementById('result-agreements');
+  if (agreementsContainer) {
+    agreementsContainer.innerHTML = data.acuerdos.map(a => `
+      <div class="p-3 bg-white border border-zinc-200 rounded-lg shadow-2xs flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <span class="font-mono text-xs font-bold text-zinc-500 bg-zinc-100 px-2 py-1 rounded">${a.id}</span>
+          <p class="text-xs text-zinc-800 font-medium">${a.descripcion}</p>
+        </div>
+        <span class="text-[11px] font-semibold px-2 py-0.5 bg-zinc-100 text-zinc-600 rounded border border-zinc-200 uppercase tracking-wide">
+          ${a.impacto}
+        </span>
+      </div>
+    `).join('');
+  }
+
+  // Tareas / Action Items
+  renderTasksList();
+}
+
+function renderTasksList() {
+  const tasksContainer = document.getElementById('result-tasks');
+  if (!tasksContainer || !state.currentMeetingData) return;
+
+  tasksContainer.innerHTML = state.currentMeetingData.tareas.map((t, idx) => `
+    <tr class="border-b border-zinc-100 hover:bg-zinc-50/70 transition">
+      <td class="py-2.5 px-3 text-center">
+        <input type="checkbox" ${t.completada ? 'checked' : ''} onchange="toggleTaskStatus(${idx})" class="w-4 h-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 cursor-pointer">
+      </td>
+      <td class="py-2.5 px-3 font-mono text-xs text-zinc-500 font-medium">${t.id}</td>
+      <td class="py-2.5 px-3 text-xs ${t.completada ? 'line-through text-zinc-400' : 'text-zinc-800 font-medium'}">${t.tarea}</td>
+      <td class="py-2.5 px-3 text-xs text-zinc-600">${t.responsable}</td>
+      <td class="py-2.5 px-3 text-xs text-zinc-600 font-mono">${t.plazo}</td>
+      <td class="py-2.5 px-3">
+        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${t.prioridad === 'Alta' ? 'bg-zinc-800 text-zinc-100' : 'bg-zinc-100 text-zinc-700 border border-zinc-200'}">
+          ${t.prioridad}
+        </span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.toggleTaskStatus = function(idx) {
+  if (!state.currentMeetingData || !state.currentMeetingData.tareas[idx]) return;
+  state.currentMeetingData.tareas[idx].completada = !state.currentMeetingData.tareas[idx].completada;
+  renderTasksList();
+};
+
+// Chat Contextual ("Pregúntale a la Reunión")
+function setupChat() {
+  const chatInput = document.getElementById('chat-question-input');
+  const chatBtn = document.getElementById('chat-send-btn');
+  const messagesContainer = document.getElementById('chat-messages');
+
+  if (!chatBtn || !chatInput) return;
+
+  const handleSend = () => {
+    const question = chatInput.value.trim();
+    if (!question) return;
+
+    appendChatMessage('user', question);
+    chatInput.value = '';
+
+    // Generar respuesta contextual basada en la minuta
+    setTimeout(() => {
+      const answer = generateChatAnswer(question);
+      appendChatMessage('ai', answer);
+    }, 450);
+  };
+
+  chatBtn.addEventListener('click', handleSend);
+  chatInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleSend();
+  });
+}
+
+function appendChatMessage(sender, text) {
+  const messagesContainer = document.getElementById('chat-messages');
+  if (!messagesContainer) return;
+
+  const isUser = sender === 'user';
+  const messageEl = document.createElement('div');
+  messageEl.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`;
+  messageEl.innerHTML = `
+    <div class="max-w-[85%] rounded-lg px-3.5 py-2.5 text-xs ${isUser ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-800 border border-zinc-200'}">
+      ${!isUser ? '<div class="font-semibold text-[10px] text-zinc-500 uppercase tracking-wider mb-1">AIR Asistente</div>' : ''}
+      <p class="leading-relaxed">${text}</p>
+    </div>
+  `;
+  messagesContainer.appendChild(messageEl);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function generateChatAnswer(q) {
+  const query = q.toLowerCase();
+  if (query.includes('servidor') || query.includes('migracion') || query.includes('migración')) {
+    return "Según el acuerdo AC-01 [minuto 00:14:45], la migración de servidores se aprobó por consenso para el sábado 26 a las 11:00 PM. Carlos Mendoza es el responsable de entregar el cronograma detallado.";
+  }
+  if (query.includes('presupuesto') || query.includes('dinero') || query.includes('licencia') || query.includes('finanzas')) {
+    return "En el tema de licencias Q4 [minuto 00:27:10], Ana Castillo confirmó que finanzas tiene validado el presupuesto y emitirá la orden de compra el 24 de septiembre.";
+  }
+  if (query.includes('quién') || query.includes('responsable') || query.includes('carlos')) {
+    return "Carlos Mendoza tiene asignada la tarea TAR-01: 'Entregar cronograma detallado de la ventana de mantenimiento' con plazo al 23 de septiembre.";
+  }
+  if (query.includes('resumen') || query.includes('correo') || query.includes('gerencia')) {
+    return "Borrador rápido para correo:\n\n'Estimada Gerencia: Concluimos el Comité Q4 validando la ventana de migración para el 26 de septiembre y la orden de compra de ciberseguridad. Todas las tareas quedaron con responsable asignado. Adjunto el acta formal.'";
+  }
+  return "Revisando la transcripción de la sesión: el tema consultado se vincula con los acuerdos aprobados en la agenda. ¿Deseas que redacte una tarea adicional o detalle más la intervención de algún participante?";
+}
+
+// Exportación formal a PDF (Paleta neutra con tabla jsPDF)
+function exportMeetingToPdf() {
+  const data = state.currentMeetingData || DEMO_MEETING;
+
+  if (typeof window.jspdf === 'undefined') {
+    showToast("Librería PDF cargando, intenta en un momento.", true);
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  // Cabecera institucional sobria en tonos neutros
+  doc.setFillColor(248, 250, 252);
+  doc.rect(0, 0, 210, 32, 'F');
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text("ACTA OFICIAL DE SESIÓN", 15, 14);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Sistema AIR · Asistente Inteligente de Reuniones", 15, 20);
+  doc.text(`Fecha de emisión: ${new Date().toLocaleDateString()}`, 15, 25);
+
+  // Línea divisoria
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.5);
+  doc.line(15, 32, 195, 32);
+
+  // Título de la reunión
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(15, 23, 42);
+  doc.text(data.titulo, 15, 42);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Fecha de sesión: ${data.fechaHora}  |  Duración: ${data.duracion}`, 15, 47);
+
+  // Participantes
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(30, 41, 59);
+  doc.text("Participantes:", 15, 54);
+  doc.setFont('helvetica', 'normal');
+  doc.text(data.participantes.join('  •  '), 15, 59);
+
+  // Resumen ejecutivo
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text("Resumen Ejecutivo:", 15, 68);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  const splitSummary = doc.splitTextToSize(data.resumenEjecutivo, 180);
+  doc.text(splitSummary, 15, 73);
+
+  let currentY = 73 + (splitSummary.length * 4.5) + 6;
+
+  // Acuerdos firmes (Tabla)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Acuerdos y Decisiones Aprobadas:", 15, currentY);
+  currentY += 4;
+
+  const agreementsRows = data.acuerdos.map(a => [a.id, a.descripcion, a.impacto]);
+  doc.autoTable({
+    startY: currentY,
+    head: [['Código', 'Descripción del Acuerdo', 'Impacto']],
+    body: agreementsRows,
+    theme: 'grid',
+    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontSize: 8 },
+    styles: { fontSize: 8, textColor: [30, 41, 59], cellPadding: 2.5 },
+    columnStyles: { 0: { cellWidth: 20 }, 2: { cellWidth: 25 } },
+    margin: { left: 15, right: 15 }
+  });
+
+  currentY = doc.lastAutoTable.finalY + 8;
+
+  // Compromisos / Tareas (Tabla)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Matriz de Compromisos (Action Items):", 15, currentY);
+  currentY += 4;
+
+  const tasksRows = data.tareas.map(t => [t.id, t.tarea, t.responsable, t.plazo, t.prioridad, t.completada ? 'Hecho' : 'Pendiente']);
+  doc.autoTable({
+    startY: currentY,
+    head: [['Código', 'Tarea / Compromiso', 'Responsable', 'Fecha Límite', 'Prioridad', 'Estado']],
+    body: tasksRows,
+    theme: 'grid',
+    headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontSize: 8 },
+    styles: { fontSize: 7.5, textColor: [30, 41, 59], cellPadding: 2.5 },
+    columnStyles: { 0: { cellWidth: 16 }, 2: { cellWidth: 32 }, 3: { cellWidth: 24 }, 4: { cellWidth: 18 }, 5: { cellWidth: 20 } },
+    margin: { left: 15, right: 15 }
+  });
+
+  // Pie de página con firmas
+  const finalY = doc.lastAutoTable.finalY + 15;
+  if (finalY < 270) {
+    doc.setDrawColor(203, 213, 225);
+    doc.line(25, finalY + 12, 85, finalY + 12);
+    doc.line(125, finalY + 12, 185, finalY + 12);
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Firma del Moderador", 40, finalY + 16);
+    doc.text("Conformidad de Asistentes", 140, finalY + 16);
+  }
+
+  doc.save(`Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf`);
+  showToast("Acta descargada en formato PDF formal.");
+}
+
+// Copiar Markdown
+function copyMeetingAsMarkdown() {
+  const data = state.currentMeetingData || DEMO_MEETING;
+  const md = `# ${data.titulo}
+**Fecha:** ${data.fechaHora}  
+**Duración:** ${data.duracion}  
+**Participantes:** ${data.participantes.join(', ')}
+
+---
+
+## Resumen Ejecutivo
+${data.resumenEjecutivo}
+
+---
+
+## Acuerdos y Decisiones
+${data.acuerdos.map(a => `- **[${a.id}]**: ${a.descripcion} *(Impacto: ${a.impacto})*`).join('\n')}
+
+---
+
+## Matriz de Compromisos (Action Items)
+| Código | Tarea | Responsable | Fecha Límite | Prioridad | Estado |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+${data.tareas.map(t => `| ${t.id} | ${t.tarea} | ${t.responsable} | ${t.plazo} | ${t.prioridad} | ${t.completada ? 'Completado' : 'Pendiente'} |`).join('\n')}
+
+---
+*Generado automáticamente por AIR (Asistente Inteligente de Reuniones)*
+`;
+
+  navigator.clipboard.writeText(md).then(() => {
+    showToast("Minuta copiada al portapapeles en formato Markdown.");
+  }).catch(() => {
+    showToast("No se pudo copiar automáticamente.", true);
+  });
+}
+
+function openEmailDistributionModal() {
+  const data = state.currentMeetingData || DEMO_MEETING;
+  const subject = encodeURIComponent(`Minuta Oficial: ${data.titulo}`);
+  const body = encodeURIComponent(`Estimados participantes:\n\nCompartimos la minuta de la reunión "${data.titulo}" realizada el ${data.fechaHora}.\n\nRESUMEN EJECUTIVO:\n${data.resumenEjecutivo}\n\nPueden consultar sus tareas asignadas y dar seguimiento a los acuerdos formalizados.\n\nAtentamente,\nAIR Asistente de Reunión`);
+  window.open(`mailto:?subject=${subject}&body=${body}`);
+}
+
+// Cargar demostración rápida
+function setupDemoLoader() {
+  const btnDemo = document.getElementById('btn-load-demo');
+  if (btnDemo) {
+    btnDemo.addEventListener('click', () => {
+      renderMeetingResults(DEMO_MEETING);
+      const resultsContainer = document.getElementById('results-container');
+      if (resultsContainer) {
+        resultsContainer.classList.remove('hidden');
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+      }
+      showToast("Reunión de demostración cargada.");
+    });
+  }
+}
+
+// Toast de notificación sutil (100% responsive)
+function showToast(msg, isError = false) {
+  let toast = document.getElementById('toast-notification');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast-notification';
+    toast.className = "fixed bottom-4 sm:bottom-5 left-4 sm:left-auto right-4 sm:right-5 z-50 px-4 py-2.5 rounded-lg text-xs font-medium shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none text-center sm:text-left";
+    document.body.appendChild(toast);
+  }
+
+  toast.textContent = msg;
+  toast.className = `fixed bottom-4 sm:bottom-5 left-4 sm:left-auto right-4 sm:right-5 z-50 px-4 py-2.5 rounded-lg text-xs font-medium shadow-lg transition-opacity duration-300 text-center sm:text-left ${isError ? 'bg-red-900 text-white' : 'bg-zinc-900 text-white'}`;
+  toast.style.opacity = '1';
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+  }, 2800);
+}
+
+// GESTIÓN DEL CENTRO DE AYUDA Y TUTORIAL (MODAL + GUÍA + CHAT INTERACTIVO)
+function setupHelpModal() {
+  const modal = document.getElementById('modal-help');
+  const btnOpen = document.getElementById('btn-open-help');
+  const btnClose = document.getElementById('btn-close-help');
+  const tabGuide = document.getElementById('tab-help-guide');
+  const tabChat = document.getElementById('tab-help-chat');
+  const panelGuide = document.getElementById('panel-help-guide');
+  const panelChat = document.getElementById('panel-help-chat');
+  const btnDemoHelp = document.getElementById('btn-demo-from-help');
+
+  if (!modal) return;
+
+  const openModal = () => {
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+  };
+
+  const closeModal = () => {
+    modal.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+  };
+
+  if (btnOpen) btnOpen.addEventListener('click', openModal);
+  if (btnClose) btnClose.addEventListener('click', closeModal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // Alternar pestañas dentro del modal
+  if (tabGuide && tabChat && panelGuide && panelChat) {
+    tabGuide.addEventListener('click', () => {
+      tabGuide.className = "py-2 px-4 text-xs font-semibold rounded-t-lg border-b-2 border-slate-900 text-slate-900 bg-slate-50/70 flex items-center space-x-2 cursor-pointer";
+      tabChat.className = "py-2 px-4 text-xs font-semibold rounded-t-lg text-slate-500 hover:text-slate-900 flex items-center space-x-2 cursor-pointer";
+      panelGuide.classList.remove('hidden');
+      panelChat.classList.add('hidden');
+    });
+
+    tabChat.addEventListener('click', () => {
+      tabChat.className = "py-2 px-4 text-xs font-semibold rounded-t-lg border-b-2 border-slate-900 text-slate-900 bg-slate-50/70 flex items-center space-x-2 cursor-pointer";
+      tabGuide.className = "py-2 px-4 text-xs font-semibold rounded-t-lg text-slate-500 hover:text-slate-900 flex items-center space-x-2 cursor-pointer";
+      panelChat.classList.remove('hidden');
+      panelGuide.classList.add('hidden');
+      const input = document.getElementById('help-chat-input');
+      if (input) input.focus();
+    });
+  }
+
+  // Cargar ejemplo en la pantalla directamente desde el modal
+  if (btnDemoHelp) {
+    btnDemoHelp.addEventListener('click', () => {
+      closeModal();
+      renderMeetingResults(DEMO_MEETING);
+      const resultsContainer = document.getElementById('results-container');
+      if (resultsContainer) {
+        resultsContainer.classList.remove('hidden');
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+      }
+      showToast("Ejemplo de reunión cargado en la pantalla.");
+    });
+  }
+
+  // Inicializar chat de soporte de la aplicación
+  setupHelpChat();
+}
+
+function setupHelpChat() {
+  const input = document.getElementById('help-chat-input');
+  const btnSend = document.getElementById('btn-help-chat-send');
+  const messagesContainer = document.getElementById('help-chat-messages');
+  const chips = document.querySelectorAll('.help-chip');
+
+  if (!input || !btnSend || !messagesContainer) return;
+
+  const handleSend = (text) => {
+    const q = (text || input.value).trim();
+    if (!q) return;
+
+    appendHelpChatMessage('user', q);
+    if (!text) input.value = '';
+
+    setTimeout(() => {
+      const answer = generateHelpChatAnswer(q);
+      appendHelpChatMessage('bot', answer);
+    }, 350);
+  };
+
+  btnSend.addEventListener('click', () => handleSend());
+  input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleSend();
+  });
+
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      const q = chip.getAttribute('data-q');
+      if (q) handleSend(q);
+    });
+  });
+}
+
+function appendHelpChatMessage(sender, text) {
+  const container = document.getElementById('help-chat-messages');
+  if (!container) return;
+
+  const isUser = sender === 'user';
+  const msg = document.createElement('div');
+  msg.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-2.5`;
+  msg.innerHTML = `
+    <div class="max-w-[85%] rounded-xl px-4 py-3 text-xs leading-relaxed ${isUser ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800 border border-slate-200'}">
+      ${!isUser ? '<div class="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-1">AIR Soporte de la Aplicación</div>' : ''}
+      <p class="whitespace-pre-line">${text}</p>
+    </div>
+  `;
+  container.appendChild(msg);
+  container.scrollTop = container.scrollHeight;
+}
+
+function generateHelpChatAnswer(q) {
+  const query = q.toLowerCase();
+
+  if (query.includes('título') || query.includes('titulo') || query.includes('nombre')) {
+    return "📌 **Casilla: Título de la Sesión**\n\n• **¿Para qué sirve?** Es el nombre con el que se identificará tu reunión en el acta oficial, en el archivo PDF descargable y en los correos que envíes.\n• **¿Cómo se llena?** Escribe un título breve y descriptivo (por ejemplo: *Comité Semanal de Operaciones* o *Revisión de Avance Proyecto WES*).";
+  }
+
+  if (query.includes('participante') || query.includes('asistente') || query.includes('quiénes') || query.includes('persona')) {
+    return "👥 **Casilla: Participantes Convocados**\n\n• **¿Para qué sirve?** Permite registrar a los asistentes. La IA utiliza estos nombres para saber a quién asignarle cada tarea y compromiso mencionado durante la reunión.\n• **¿Cómo se llena?** Escribe los nombres separados por comas. Opcionalmente puedes agregar su cargo entre paréntesis (por ejemplo: *Elena Morales (Operaciones), Carlos Mendoza (Seguridad), Ing. Marcos Valerio*).";
+  }
+
+  if (query.includes('modelo') || query.includes('motor') || query.includes('gemini') || query.includes('whisper')) {
+    return "🧠 **Casilla: Modelo de IA / Motor**\n\n• **¿Para qué sirve?** Es el procesador inteligente que analiza el audio.\n• **¿Cómo se llena?** Viene preseleccionado con *Google Gemini 2.0 Flash*, que entiende audio nativo rápidamente. No necesitas cambiar nada a menos que desees experimentar con *Gemini 1.5 Pro* para reuniones muy extensas.";
+  }
+
+  if (query.includes('micrófono') || query.includes('microfono') || query.includes('grabar') || query.includes('grabación') || query.includes('ondas')) {
+    return "🎙️ **Espacio: Micrófono en Vivo**\n\n• **¿Para qué sirve?** Te permite grabar reuniones presenciales en sala desde tu computadora o teléfono sin instalar programas externos.\n• **Pasos para usarlo:**\n  1. Presiona el botón rojo *'Iniciar Grabación'*.\n  2. El navegador te pedirá permiso de micrófono: haz clic en *Permitir*.\n  3. Verás el cronómetro avanzar y las ondas moverse al hablar.\n  4. Al terminar, presiona *'Finalizar y Guardar'* y listo.";
+  }
+
+  if (query.includes('subir') || query.includes('archivo') || query.includes('formato') || query.includes('mp3') || query.includes('mp4') || query.includes('drag')) {
+    return "📁 **Espacio: Subir Archivo**\n\n• **¿Para qué sirve?** Para cuando ya tienes la reunión grabada previamente (por ejemplo en Zoom, Google Meet, Microsoft Teams o una nota de voz).\n• **¿Cómo se llena?** Arrastra el archivo al recuadro punteado o presiona *'Seleccionar archivo'*.\n• **Formatos aceptados:** MP3, WAV, M4A, OGG y archivos de video MP4 (el sistema extrae el sonido automáticamente).";
+  }
+
+  if (query.includes('generar') || query.includes('procesar') || query.includes('botón') || query.includes('boton')) {
+    return "⚡ **Botón: Generar Minuta y Acuerdos con IA**\n\n• **¿Para qué sirve?** Es el disparador central. Toma el audio grabado o cargado, lo escucha de principio a fin, identifica quién habló y genera en pocos segundos el resumen ejecutivo, los temas con tiempos, los acuerdos y la tabla de tareas.";
+  }
+
+  if (query.includes('pdf') || query.includes('descargar') || query.includes('imprimir')) {
+    return "📄 **Botón: Descargar PDF Formal**\n\n• **¿Para qué sirve?** Genera un documento PDF oficial con membrete corporativo, resumen ejecutivo, tabla de acuerdos y matriz de compromisos con espacio para firmas del moderador y asistentes, listo para archivar o imprimir.";
+  }
+
+  if (query.includes('tarea') || query.includes('compromiso') || query.includes('matriz') || query.includes('action item') || query.includes('checkbox') || query.includes('casilla')) {
+    return "📋 **Espacio: Matriz de Compromisos (Action Items)**\n\n• **¿Para qué sirve?** Es la lista de tareas resultantes de la reunión. Cada tarea incluye su código (ej: *TAR-01*), qué debe hacerse, quién es el responsable y su fecha límite.\n• **¿Cómo se interactúa?** Puedes hacer clic en la casilla de verificación (checkbox) a la izquierda de cada tarea para marcarla como completada en tiempo real.";
+  }
+
+  if (query.includes('acuerdo') || query.includes('resolucion') || query.includes('decisión') || query.includes('decision')) {
+    return "🤝 **Espacio: Acuerdos y Resoluciones**\n\n• **¿Para qué sirve?** Destaca las decisiones firmes aprobadas por el equipo (ej: *'Aprobada la migración de servidores para el sábado 26'*), clasificándolas por su impacto (Alto, Medio u Operativo).";
+  }
+
+  if (query.includes('correo') || query.includes('email') || query.includes('enviar')) {
+    return "✉️ **Botón: Enviar por Correo**\n\n• **¿Para qué sirve?** Redacta automáticamente un correo electrónico con el resumen ejecutivo y los acuerdos para que puedas despacharlo inmediatamente a los asistentes de la reunión.";
+  }
+
+  if (query.includes('paso a paso') || query.includes('como empiezo') || query.includes('tutorial') || query.includes('ayuda')) {
+    return "🧭 **Guía Rápida en 3 Pasos:**\n\n1. Escribe el *Título de la reunión* y quiénes asisten.\n2. Presiona *Iniciar Grabación* con tu micrófono o *Subir Archivo* con un audio que ya tengas.\n3. Presiona *Generar Minuta y Acuerdos con IA* y en segundos tendrás tu resumen, acuerdos y la opción de descargar el PDF.";
+  }
+
+  return "Entendido. En la pantalla dispones de: **Título** (nombre de la sesión), **Participantes** (asistentes convocados), **Micrófono en vivo** (para grabar en sala), **Subir archivo** (para audios MP3/M4A), **Generar Minuta** (botón de IA) y **Descargar PDF**.\n\n¿De cuál de estos elementos te gustaría que te dé más detalles de cómo se llena?";
+}

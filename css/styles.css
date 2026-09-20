@@ -1,0 +1,100 @@
+/* AIR — Asistente Inteligente de Reuniones
+   Estilos base: Paleta de grises neutros (Slate / Zinc / Neutral)
+   Estética SaaS moderna, sobria y ejecutiva */
+
+:root {
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --border-subtle: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --action-primary: #18181b;
+  --action-primary-hover: #27272a;
+  --accent-neutral: #f1f5f9;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar sutil en grises neutros */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Canvas del visualizador de audio */
+#audio-waveform {
+  background: #f8fafc;
+  border-radius: 0.5rem;
+}
+
+/* Animación sutil de pulso para grabación activa */
+@keyframes neutral-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.recording-pulse {
+  animation: neutral-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Drag & Drop Highlight */
+.dropzone-active {
+  border-color: #0f172a !important;
+  background-color: #f1f5f9 !important;
+}
+
+/* Transición suave para todos los botones y tarjetas */
+button, input, textarea, .card-interactive {
+  transition: all 0.15s ease-in-out;
+}
+
+/* Optimización Responsive y Táctil */
+@media (max-width: 640px) {
+  /* Evitar zoom automático en iOS en inputs de texto */
+  input[type="text"], input[type="file"], select, textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Área táctil cómoda para botones en móviles */
+  button {
+    min-height: 38px;
+  }
+}
+
+/* Soporte de desplazamiento suave en tablas móviles */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* Estilo para impresión / exportación */
+@media print {
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+
