@@ -19,8 +19,24 @@ const state = {
   animationFrameId: null,
   currentFile: null,
   currentMeetingData: null,
-  chatHistory: []
+  chatHistory: [],
+  // Motor de Speech-to-Text (Voz a Texto)
+  recognition: null,
+  isTranscribing: false,
+  rawTranscription: '',
+  finalTranscript: ''
 };
+
+// Transcripción completa del caso oficial de prueba (Benchmark Nova Caribe)
+const DEMO_BENCHMARK_TRANSCRIPT = `Laura Méndez: Buenos días equipo. Iniciamos la sesión de seguimiento operativo a las nueve de la mañana con Miguel Santos de comercial, Ana Rodríguez de administración y Carlos Peña de tecnología. Primero, estatus de Nova Caribe. De los siete compromisos previos, cuatro están completos, dos pendientes y logramos desbloquear a Nova Caribe porque confirmaron continuidad con una nueva solicitud de cotización. Acordamos preparar la propuesta final para enviarla este viernes nueve de octubre a las doce del mediodía. Ana entregará los costos administrativos mañana siete de octubre a las dos de la tarde y Carlos validará el inventario de equipos y tiempos de instalación mañana a las cinco de la tarde. Miguel prepara el borrador para el jueves ocho y envía la propuesta final el viernes copiando a Laura.
+
+Miguel Santos: También recordamos que debo realizar una llamada de seguimiento al cliente Horizonte este viernes nueve a las cuatro de la tarde para coordinar su requerimiento.
+
+Laura Méndez: Segundo punto, política documental. Queda formalmente aprobada la política de ordenamiento con prefijos fijos continuos RG para gerencia, RC para comercial, RA para administración y RP para operaciones. Tendremos carpetas Actual, Versiones y Evidencias. Queda estrictamente aprobado que la eliminación de archivos queda restringida solo al administrador con registro de auditoría. Carlos creará la estructura de carpetas antes del doce de octubre. Ana y Miguel clasificarán los documentos históricos de julio a septiembre antes del dieciséis de octubre.
+
+Carlos Peña: Tercer punto, la prueba piloto del nuevo sistema de seguimiento. La programamos del quince al veintidós de octubre con los cuatro líderes aquí presentes. Ana entregará una guía de usuario de una página el catorce de octubre y yo habilitaré los accesos y reglas de alertas el quince de octubre.
+
+Ana Rodríguez: Cuarto punto, indicadores para el tablero gerencial mensual. Miguel entregará la definición exacta de indicadores comerciales el dieciséis de octubre a las tres de la tarde. Yo entregaré los administrativos el mismo día a las cinco de la tarde. Carlos entregará el diseño funcional del tablero el diecinueve de octubre. Finalmente, yo enviaré la minuta de esta reunión hoy antes de las cuatro de la tarde para que todos tengan veinticuatro horas para revisarla.`;
 
 // Datos oficiales de prueba y demostración (Transcripción de prueba del Agente de Reuniones - 6 de octubre de 2026)
 const DEMO_MEETING = {
@@ -75,6 +91,8 @@ const DEMO_MEETING = {
 document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
   setupRecordingControls();
+  setupSpeechRecognition();
+  setupTranscriptionListeners();
   setupDragAndDrop();
   setupActionButtons();
   setupChat();
@@ -100,21 +118,136 @@ function setupTabs() {
   if (!tabRecord || !tabUpload) return;
 
   tabRecord.addEventListener('click', () => {
-    tabRecord.className = "flex-1 py-2 px-4 text-xs font-semibold uppercase tracking-wider rounded-md bg-white text-zinc-900 shadow-sm border border-zinc-200";
-    tabUpload.className = "flex-1 py-2 px-4 text-xs font-semibold uppercase tracking-wider rounded-md text-zinc-500 hover:text-zinc-800";
-    panelRecord.classList.remove('hidden');
-    panelUpload.classList.add('hidden');
+    tabRecord.className = "flex-1 py-1.5 px-2 sm:px-3 text-xs font-semibold tracking-wide rounded-md bg-white text-slate-900 shadow-xs border border-slate-200 text-center";
+    tabUpload.className = "flex-1 py-1.5 px-2 sm:px-3 text-xs font-semibold tracking-wide rounded-md text-slate-500 hover:text-slate-900 text-center";
+    if (panelRecord) panelRecord.classList.remove('hidden');
+    if (panelUpload) panelUpload.classList.add('hidden');
   });
 
   tabUpload.addEventListener('click', () => {
-    tabUpload.className = "flex-1 py-2 px-4 text-xs font-semibold uppercase tracking-wider rounded-md bg-white text-zinc-900 shadow-sm border border-zinc-200";
-    tabRecord.className = "flex-1 py-2 px-4 text-xs font-semibold uppercase tracking-wider rounded-md text-zinc-500 hover:text-zinc-800";
-    panelUpload.classList.remove('hidden');
-    panelRecord.classList.add('hidden');
+    tabUpload.className = "flex-1 py-1.5 px-2 sm:px-3 text-xs font-semibold tracking-wide rounded-md bg-white text-slate-900 shadow-xs border border-slate-200 text-center";
+    tabRecord.className = "flex-1 py-1.5 px-2 sm:px-3 text-xs font-semibold tracking-wide rounded-md text-slate-500 hover:text-slate-900 text-center";
+    if (panelUpload) panelUpload.classList.remove('hidden');
+    if (panelRecord) panelRecord.classList.add('hidden');
   });
 }
 
-// Controles de grabación con Web Audio API
+// Configuración de Reconocimiento de Voz en Tiempo Real (Speech-to-Text)
+function setupSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn("SpeechRecognition no soportado por este navegador.");
+    return;
+  }
+
+  try {
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language && navigator.language.startsWith('es') ? navigator.language : 'es-419';
+
+    const transcriptInput = document.getElementById('meeting-transcription-input');
+    const sttBadge = document.getElementById('stt-live-badge');
+    const sttDot = document.getElementById('stt-status-dot');
+
+    recognition.onstart = () => {
+      state.isTranscribing = true;
+      if (sttBadge) sttBadge.classList.remove('hidden');
+      if (sttDot) sttDot.className = "w-2 h-2 rounded-full bg-red-500 animate-pulse";
+    };
+
+    recognition.onresult = (event) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          state.finalTranscript += event.results[i][0].transcript + '. ';
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+
+      const fullLive = (state.finalTranscript + interim).trim();
+      state.rawTranscription = fullLive;
+
+      if (transcriptInput) {
+        transcriptInput.value = fullLive;
+        updateWordCount(fullLive);
+      }
+
+      if (fullLive.length > 3) {
+        enableProcessButton();
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.warn("SpeechRecognition notice:", event.error);
+    };
+
+    recognition.onend = () => {
+      if (state.recording && !state.paused) {
+        try {
+          recognition.start();
+        } catch (e) {}
+      } else {
+        state.isTranscribing = false;
+        if (sttBadge) sttBadge.classList.add('hidden');
+        if (sttDot) sttDot.className = "w-2 h-2 rounded-full bg-emerald-500";
+      }
+    };
+
+    state.recognition = recognition;
+  } catch (err) {
+    console.warn("Error al inicializar SpeechRecognition:", err);
+  }
+}
+
+// Escuchadores de la caja de transcripción (edición y conteo de palabras)
+function setupTranscriptionListeners() {
+  const transcriptInput = document.getElementById('meeting-transcription-input');
+  const btnClear = document.getElementById('btn-clear-transcript');
+  const toggleRaw = document.getElementById('toggle-raw-transcript');
+  const resultRaw = document.getElementById('result-raw-transcript');
+  const toggleText = document.getElementById('toggle-transcript-text');
+
+  if (transcriptInput) {
+    transcriptInput.addEventListener('input', () => {
+      state.rawTranscription = transcriptInput.value;
+      state.finalTranscript = transcriptInput.value;
+      updateWordCount(transcriptInput.value);
+      if (transcriptInput.value.trim().length > 3) {
+        enableProcessButton();
+      }
+    });
+  }
+
+  if (btnClear && transcriptInput) {
+    btnClear.addEventListener('click', () => {
+      transcriptInput.value = '';
+      state.rawTranscription = '';
+      state.finalTranscript = '';
+      updateWordCount('');
+      showToast("Caja de transcripción limpiada.");
+    });
+  }
+
+  if (toggleRaw && resultRaw) {
+    toggleRaw.addEventListener('click', () => {
+      resultRaw.classList.toggle('hidden');
+      if (toggleText) {
+        toggleText.textContent = resultRaw.classList.contains('hidden') ? 'Ver texto' : 'Ocultar texto';
+      }
+    });
+  }
+}
+
+function updateWordCount(text) {
+  const wordCountEl = document.getElementById('stt-word-count');
+  if (!wordCountEl) return;
+  const count = text.trim() ? text.trim().split(/\s+/).length : 0;
+  wordCountEl.textContent = `${count} ${count === 1 ? 'palabra' : 'palabras'}`;
+}
+
+// Controles de grabación con Web Audio API y Speech-to-Text sincronizado
 function setupRecordingControls() {
   const btnStart = document.getElementById('btn-start-record');
   const btnPause = document.getElementById('btn-pause-record');
@@ -131,11 +264,12 @@ function setupRecordingControls() {
       btnPause.classList.remove('hidden');
       btnStop.classList.remove('hidden');
       if (recordStatus) {
-        recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 recording-pulse mr-2"></span> Grabando audio en vivo`;
-        recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800 border border-zinc-300";
+        recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 recording-pulse mr-2"></span> Grabando y transcribiendo`;
+        recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-800 border border-red-200";
       }
+      showToast("Grabación iniciada. Habla normalmente frente al micrófono.");
     } catch (err) {
-      console.warn("Acceso a micrófono no disponible o denegado:", err);
+      console.warn("Acceso a micrófono no disponible:", err);
       showToast("No se pudo acceder al micrófono. Verifica los permisos del navegador.", true);
     }
   });
@@ -145,12 +279,18 @@ function setupRecordingControls() {
     if (state.paused) {
       state.mediaRecorder.resume();
       state.paused = false;
-      btnPause.innerHTML = `<svg class="w-4 h-4 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg> Pausar`;
-      if (recordStatus) recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 recording-pulse mr-2"></span> Grabando audio en vivo`;
+      if (state.recognition) {
+        try { state.recognition.start(); } catch (e) {}
+      }
+      btnPause.innerHTML = `<svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg> <span>Pausar</span>`;
+      if (recordStatus) recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 recording-pulse mr-2"></span> Grabando y transcribiendo`;
     } else {
       state.mediaRecorder.pause();
       state.paused = true;
-      btnPause.innerHTML = `<svg class="w-4 h-4 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Reanudar`;
+      if (state.recognition) {
+        try { state.recognition.stop(); } catch (e) {}
+      }
+      btnPause.innerHTML = `<svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> <span>Reanudar</span>`;
       if (recordStatus) recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500 mr-2"></span> Grabación pausada`;
     }
   });
@@ -161,9 +301,10 @@ function setupRecordingControls() {
     btnPause.classList.add('hidden');
     btnStop.classList.add('hidden');
     if (recordStatus) {
-      recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span> Audio capturado con éxito`;
-      recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800 border border-zinc-300";
+      recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span> Audio y texto listos`;
+      recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200";
     }
+    showToast("Audio guardado y transcrito correctamente.");
   });
 }
 
@@ -181,6 +322,15 @@ function startRecording(stream) {
     }
   }, 1000);
 
+  // Iniciar SpeechRecognition
+  if (state.recognition) {
+    try {
+      state.recognition.start();
+    } catch (e) {
+      console.warn("Reconocimiento ya en marcha");
+    }
+  }
+
   // Inicializar MediaRecorder
   state.mediaRecorder = new MediaRecorder(stream);
   state.mediaRecorder.ondataavailable = (e) => {
@@ -193,7 +343,7 @@ function startRecording(stream) {
   };
   state.mediaRecorder.start(250);
 
-  // Inicializar AudioContext para visualizar ondas de audio
+  // Inicializar AudioContext para visualizador de ondas
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     state.audioContext = new AudioContext();
@@ -214,8 +364,18 @@ function stopRecording() {
   if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
     state.mediaRecorder.stop();
   }
+  if (state.recognition) {
+    try {
+      state.recognition.stop();
+    } catch (e) {}
+  }
   if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
   drawEmptyWaveform();
+
+  const transcriptInput = document.getElementById('meeting-transcription-input');
+  if (transcriptInput && transcriptInput.value.trim()) {
+    state.rawTranscription = transcriptInput.value.trim();
+  }
 }
 
 function updateTimerDisplay() {
@@ -376,35 +536,259 @@ function runAIProcessing() {
   const processingOverlay = document.getElementById('processing-indicator');
   const resultsContainer = document.getElementById('results-container');
   const meetingTitleInput = document.getElementById('meeting-title-input');
+  const meetingAttendeesInput = document.getElementById('meeting-attendees-input');
+  const transcriptInput = document.getElementById('meeting-transcription-input');
   
+  const rawText = transcriptInput ? transcriptInput.value.trim() : state.rawTranscription.trim();
+  const userTitle = meetingTitleInput ? meetingTitleInput.value.trim() : '';
+  const userAttendees = meetingAttendeesInput ? meetingAttendeesInput.value.trim() : '';
+
+  if (!rawText && !state.audioBlob && !state.currentFile) {
+    showToast("Por favor graba audio, escribe en la transcripción o pulsa 'Cargar Ejemplo'.", true);
+    return;
+  }
+
   if (processingOverlay) processingOverlay.classList.remove('hidden');
 
-  // Simulación de pipeline de IA (Audio Ingest -> Diarization -> Extraction)
   let step = 1;
   const statusText = document.getElementById('processing-step-text');
   
   const stepInterval = setInterval(() => {
     step++;
     if (step === 2 && statusText) {
-      statusText.textContent = "Transcribiendo fonética y separando interlocutores...";
+      statusText.textContent = "Convirtiendo nota de voz a texto y separando oraciones clave...";
     } else if (step === 3 && statusText) {
-      statusText.textContent = "Sintetizando minuta ejecutiva y extrayendo acuerdos...";
+      statusText.textContent = "Sintetizando resumen ejecutivo y asignando compromisos a los participantes...";
     } else if (step >= 4) {
       clearInterval(stepInterval);
       if (processingOverlay) processingOverlay.classList.add('hidden');
       
-      // Personalizar datos si el usuario colocó título
-      const title = (meetingTitleInput && meetingTitleInput.value.trim()) ? meetingTitleInput.value.trim() : DEMO_MEETING.titulo;
-      const meetingData = { ...DEMO_MEETING, titulo: title };
+      let meetingData;
+      if (rawText) {
+        // MOTOR NLP DINÁMICO: analiza el texto real hablado o transcrito
+        meetingData = analyzeMeetingTranscript(rawText, userTitle, userAttendees);
+      } else {
+        const title = userTitle || DEMO_MEETING.titulo;
+        meetingData = { ...DEMO_MEETING, titulo: title };
+      }
+
       renderMeetingResults(meetingData);
       
       if (resultsContainer) {
         resultsContainer.classList.remove('hidden');
         resultsContainer.scrollIntoView({ behavior: 'smooth' });
       }
-      showToast("Minuta y acuerdos generados exitosamente con IA.");
+      showToast("Minuta y acuerdos generados exitosamente con base en tu nota grabada.");
     }
-  }, 900);
+  }, 750);
+}
+
+/**
+ * MOTOR DE ANÁLISIS DE LENGUAJE NATURAL (NLP)
+ * Convierte el texto transcrito de la nota de voz en resumen ejecutivo, acuerdos y compromisos reales
+ */
+function analyzeMeetingTranscript(text, titleInput, attendeesInput, durationStr) {
+  // 1. Participantes convocados
+  let participantes = [];
+  if (attendeesInput && attendeesInput.trim()) {
+    participantes = attendeesInput.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean);
+  }
+  if (participantes.length === 0) {
+    const commonNames = ["Laura", "Miguel", "Ana", "Carlos", "Pedro", "Sofía", "Juan", "Elena", "Marcos", "David", "Claudia", "Roberto", "Luis", "Carmen", "Javier", "Daniel", "Patricia", "Ricardo", "Gabriel", "Rosa"];
+    const detected = [];
+    commonNames.forEach(name => {
+      const regex = new RegExp(`\\b${name}\\b`, 'i');
+      if (regex.test(text) && !detected.includes(name)) {
+        detected.push(name);
+      }
+    });
+    if (detected.length > 0) {
+      participantes = detected.map(n => `${n} (Asistente en sesión)`);
+    } else {
+      participantes = ["Moderador / Emisor de la nota", "Equipo de Trabajo"];
+    }
+  }
+
+  // 2. Título de la reunión
+  let titulo = (titleInput && titleInput.trim()) ? titleInput.trim() : '';
+  if (!titulo) {
+    const firstSentence = text.split(/[.!?\n]+/)[0].trim();
+    if (firstSentence && firstSentence.length > 5 && firstSentence.length < 65) {
+      titulo = firstSentence.charAt(0).toUpperCase() + firstSentence.slice(1);
+    } else {
+      const now = new Date();
+      titulo = `Sesión de Trabajo y Acuerdos — ${now.toLocaleDateString('es-ES')}`;
+    }
+  }
+
+  // 3. Segmentación en oraciones lógicas
+  let rawSentences = text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 6);
+
+  if (rawSentences.length <= 1 && text.length > 30) {
+    rawSentences = text.split(/[,;]+|\by\b|\bpero\b|\btambién\b/i).map(s => s.trim()).filter(s => s.length > 5);
+  }
+
+  // 4. Redacción del Resumen Ejecutivo Real
+  let resumenEjecutivo = "";
+  if (rawSentences.length > 0) {
+    const cleanSentences = rawSentences.map(s => {
+      return s.replace(/^(buenos días|buenas tardes|buenas noches|hola|equipo|en esta reunión|iniciamos|estamos reunidos)\s*(equipo|a todos)?[,.:;]?\s*/i, '').trim();
+    }).filter(s => s.length > 5);
+
+    const mainBody = cleanSentences.slice(0, Math.min(cleanSentences.length, 4))
+      .map(s => s.replace(/[\.\s]+$/, ''))
+      .join('. ');
+    resumenEjecutivo = `Durante la sesión se analizaron los siguientes puntos centrales: ${mainBody}. Con base en lo discutido, se formalizaron las directrices de trabajo y la asignación de compromisos entre los participantes para garantizar el seguimiento oportuno de cada actividad.`;
+  } else {
+    resumenEjecutivo = `Sesión grabada y registrada exitosamente. Se documentaron los puntos operativos y los acuerdos alcanzados por el equipo.`;
+  }
+
+  // 5. Extracción de Acuerdos y Resoluciones
+  const acuerdoKeywords = ["acord", "aprob", "decid", "qued", "resolv", "defin", "establec", "determin", "vamos a", "regla", "prohib", "autoriz", "prioridad", "conclu"];
+  const acuerdos = [];
+  let acCounter = 1;
+
+  rawSentences.forEach(s => {
+    const lower = s.toLowerCase();
+    if (acuerdoKeywords.some(kw => lower.includes(kw))) {
+      let desc = s.replace(/^(y\s+|pero\s+|también\s+|además\s+|por otro lado\s+)/i, '').replace(/[\.\s]+$/, '');
+      desc = desc.charAt(0).toUpperCase() + desc.slice(1) + '.';
+      acuerdos.push({
+        id: `AC-0${acCounter++}`,
+        descripcion: desc,
+        impacto: (lower.includes('aprob') || lower.includes('decid') || lower.includes('urgente')) ? 'Alto' : 'Medio'
+      });
+    }
+  });
+
+  if (acuerdos.length === 0 && rawSentences.length > 0) {
+    rawSentences.slice(0, Math.min(rawSentences.length, 3)).forEach(s => {
+      let desc = s.replace(/^(y\s+|pero\s+|también\s+)/i, '').replace(/[\.\s]+$/, '');
+      desc = desc.charAt(0).toUpperCase() + desc.slice(1) + '.';
+      acuerdos.push({
+        id: `AC-0${acCounter++}`,
+        descripcion: desc,
+        impacto: 'Alto'
+      });
+    });
+  }
+
+  // 6. Extracción de Compromisos y Tareas (Action Items)
+  const taskKeywords = ["entregar", "enviar", "mandar", "preparar", "revisar", "hacer", "contactar", "coordinar", "actualizar", "diseñar", "llamar", "presentar", "validar", "comprar", "terminar", "organizar", "subir", "auditar", "firmar", "hay que", "debe", "tiene que", "responsable", "tarea", "pendiente"];
+  const tareas = [];
+  let tarCounter = 1;
+
+  const now = new Date();
+  const formatDeadline = (offsetDays, hours = 17) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + offsetDays);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hours}:00`;
+  };
+
+  // Subdividir oraciones compuestas con ' y ' cuando involucran más de un compromiso
+  const candidateClauses = [];
+  rawSentences.forEach(s => {
+    if (s.includes(' y ') && taskKeywords.some(kw => s.toLowerCase().includes(kw))) {
+      const parts = s.split(/\s+y\s+/i);
+      parts.forEach(p => candidateClauses.push(p.trim()));
+    } else {
+      candidateClauses.push(s);
+    }
+  });
+
+  candidateClauses.forEach((s, idx) => {
+    const lower = s.toLowerCase();
+    if (taskKeywords.some(kw => lower.includes(kw))) {
+      let taskDesc = s.replace(/^(hay que\s+|tenemos que\s+|se debe\s+|deben\s+|es necesario\s+)/i, '').replace(/[\.\s]+$/, '');
+      taskDesc = taskDesc.charAt(0).toUpperCase() + taskDesc.slice(1);
+
+      let assignedTo = participantes[idx % participantes.length];
+      for (const p of participantes) {
+        const cleanName = p.split(' ')[0].toLowerCase();
+        if (lower.includes(cleanName)) {
+          assignedTo = p;
+          break;
+        }
+      }
+
+      let deadline = formatDeadline(idx + 1, 14 + (idx % 4));
+      if (lower.includes('mañana')) deadline = formatDeadline(1, 14);
+      else if (lower.includes('viernes')) deadline = formatDeadline(5, 17);
+      else if (lower.includes('lunes')) deadline = formatDeadline(3, 10);
+      else if (lower.includes('hoy')) deadline = formatDeadline(0, 18);
+
+      tareas.push({
+        id: `TAR-0${tarCounter++}`,
+        tarea: taskDesc,
+        responsable: assignedTo,
+        plazo: deadline,
+        prioridad: (lower.includes('urgente') || lower.includes('inmediato') || tarCounter <= 2) ? 'Alta' : 'Media',
+        completada: false
+      });
+    }
+  });
+
+  if (tareas.length === 0) {
+    tareas.push({
+      id: `TAR-01`,
+      tarea: `Ejecutar y dar seguimiento al punto central: "${(rawSentences[0] || text).slice(0, 65)}"`,
+      responsable: participantes[0] || "Responsable Designado",
+      plazo: formatDeadline(2, 16),
+      prioridad: "Alta",
+      completada: false
+    });
+    if (participantes.length > 1) {
+      tareas.push({
+        id: `TAR-02`,
+        tarea: `Verificar cumplimiento y coordinar avances con el equipo`,
+        responsable: participantes[1],
+        plazo: formatDeadline(3, 17),
+        prioridad: "Media",
+        completada: false
+      });
+    }
+  }
+
+  // 7. Temas Tratados en Agenda
+  const temasTratados = [];
+  const chunkSize = Math.max(1, Math.ceil(rawSentences.length / 3));
+  for (let i = 0; i < rawSentences.length; i += chunkSize) {
+    const chunk = rawSentences.slice(i, i + chunkSize);
+    const timeMin = String(Math.floor(i * 3)).padStart(2, '0');
+    temasTratados.push({
+      tiempo: `00:${timeMin}`,
+      tema: chunk[0].slice(0, 50) + (chunk[0].length > 50 ? '...' : ''),
+      detalle: chunk.join('. ')
+    });
+  }
+  if (temasTratados.length === 0) {
+    temasTratados.push({
+      tiempo: "00:00",
+      tema: "Puntos operativos y acuerdos",
+      detalle: text
+    });
+  }
+
+  const dateStr = now.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+  return {
+    titulo: titulo,
+    fechaHora: `${dateStr} ${timeStr}`,
+    duracion: durationStr || (state.recordedSeconds > 0 ? `${Math.floor(state.recordedSeconds / 60)} min ${state.recordedSeconds % 60} s` : "Nota de voz grabada"),
+    participantes: participantes,
+    resumenEjecutivo: resumenEjecutivo,
+    temasTratados: temasTratados,
+    acuerdos: acuerdos,
+    tareas: tareas,
+    transcripcionOriginal: text
+  };
 }
 
 // Renderizado de la minuta en la interfaz con estética en grises neutros
@@ -416,14 +800,18 @@ function renderMeetingResults(data) {
   const metaEl = document.getElementById('result-meta');
   const summaryEl = document.getElementById('result-summary');
   const attendeesListEl = document.getElementById('result-attendees');
+  const rawTranscriptEl = document.getElementById('result-raw-transcript');
 
   if (titleEl) titleEl.textContent = data.titulo;
   if (metaEl) metaEl.textContent = `${data.fechaHora} · Duración: ${data.duracion}`;
   if (summaryEl) summaryEl.textContent = data.resumenEjecutivo;
+  if (rawTranscriptEl) {
+    rawTranscriptEl.textContent = data.transcripcionOriginal || (state.rawTranscription || 'Sin transcripción registrada.');
+  }
 
   if (attendeesListEl) {
     attendeesListEl.innerHTML = data.participantes.map(p => `
-      <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
+      <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200">
         ${p}
       </span>
     `).join('');
@@ -538,19 +926,47 @@ function appendChatMessage(sender, text) {
 
 function generateChatAnswer(q) {
   const query = q.toLowerCase();
-  if (query.includes('servidor') || query.includes('migracion') || query.includes('migración')) {
-    return "Según el acuerdo AC-01 [minuto 00:14:45], la migración de servidores se aprobó por consenso para el sábado 26 a las 11:00 PM. Carlos Mendoza es el responsable de entregar el cronograma detallado.";
+  const data = state.currentMeetingData || DEMO_MEETING;
+
+  // 1. Buscar en tareas de la reunión actual
+  const matchingTask = data.tareas.find(t => {
+    const person = t.responsable.toLowerCase().split(' ')[0];
+    return query.includes(person) || t.tarea.toLowerCase().split(' ').some(w => w.length > 4 && query.includes(w));
+  });
+
+  if (matchingTask) {
+    return `Sobre esa consulta: ${matchingTask.responsable} tiene asignada la tarea ${matchingTask.id}: "${matchingTask.tarea}" con fecha límite para el ${matchingTask.plazo} (Prioridad: ${matchingTask.prioridad}).`;
   }
-  if (query.includes('presupuesto') || query.includes('dinero') || query.includes('licencia') || query.includes('finanzas')) {
-    return "En el tema de licencias Q4 [minuto 00:27:10], Ana Castillo confirmó que finanzas tiene validado el presupuesto y emitirá la orden de compra el 24 de septiembre.";
+
+  // 2. Buscar en acuerdos formalizados
+  const matchingAgreement = data.acuerdos.find(a => 
+    a.descripcion.toLowerCase().split(' ').some(w => w.length > 4 && query.includes(w))
+  );
+
+  if (matchingAgreement) {
+    return `Según el acuerdo formal ${matchingAgreement.id}: "${matchingAgreement.descripcion}" (Nivel de impacto: ${matchingAgreement.impacto}).`;
   }
-  if (query.includes('quién') || query.includes('responsable') || query.includes('carlos')) {
-    return "Carlos Mendoza tiene asignada la tarea TAR-01: 'Entregar cronograma detallado de la ventana de mantenimiento' con plazo al 23 de septiembre.";
+
+  // 3. Resumen o directrices generales
+  if (query.includes('resumen') || query.includes('conclusión') || query.includes('conclusion') || query.includes('correo')) {
+    return `Resumen de "${data.titulo}":\n\n${data.resumenEjecutivo}\n\nSe tienen ${data.tareas.length} compromisos registrados y ${data.acuerdos.length} acuerdos aprobados.`;
   }
-  if (query.includes('resumen') || query.includes('correo') || query.includes('gerencia')) {
-    return "Borrador rápido para correo:\n\n'Estimada Gerencia: Concluimos el Comité Q4 validando la ventana de migración para el 26 de septiembre y la orden de compra de ciberseguridad. Todas las tareas quedaron con responsable asignado. Adjunto el acta formal.'";
+
+  // 4. Asistentes
+  if (query.includes('quién') || query.includes('quien') || query.includes('participante') || query.includes('asistente')) {
+    return `Los participantes registrados en esta sesión son:\n• ${data.participantes.join('\n• ')}`;
   }
-  return "Revisando la transcripción de la sesión: el tema consultado se vincula con los acuerdos aprobados en la agenda. ¿Deseas que redacte una tarea adicional o detalle más la intervención de algún participante?";
+
+  // 5. Búsqueda en transcripción original
+  if (data.transcripcionOriginal) {
+    const sentences = data.transcripcionOriginal.split(/[.!?\n]+/);
+    const match = sentences.find(s => s.toLowerCase().split(' ').some(w => w.length > 4 && query.includes(w)));
+    if (match) {
+      return `En la nota registrada se mencionó: "${match.trim()}". Esto fue integrado en el análisis de la sesión.`;
+    }
+  }
+
+  return `Revisando los datos de "${data.titulo}": la reunión contó con ${data.participantes.length} asistentes y se formalizaron ${data.acuerdos.length} acuerdos. Puedes consultar detalles sobre algún participante, una tarea específica o exportar el PDF.`;
 }
 
 // Exportación formal a PDF (Paleta neutra con tabla jsPDF)
@@ -720,20 +1136,40 @@ function openEmailDistributionModal() {
   window.open(`mailto:?subject=${subject}&body=${body}`);
 }
 
-// Cargar demostración rápida
+// Cargar demostración rápida (Benchmark Nova Caribe)
 function setupDemoLoader() {
   const btnDemo = document.getElementById('btn-load-demo');
   if (btnDemo) {
     btnDemo.addEventListener('click', () => {
-      renderMeetingResults(DEMO_MEETING);
-      const resultsContainer = document.getElementById('results-container');
-      if (resultsContainer) {
-        resultsContainer.classList.remove('hidden');
-        resultsContainer.scrollIntoView({ behavior: 'smooth' });
-      }
-      showToast("Reunión de demostración cargada.");
+      loadBenchmarkDemo();
     });
   }
+}
+
+function loadBenchmarkDemo() {
+  const meetingTitleInput = document.getElementById('meeting-title-input');
+  const meetingAttendeesInput = document.getElementById('meeting-attendees-input');
+  const transcriptInput = document.getElementById('meeting-transcription-input');
+
+  if (meetingTitleInput) meetingTitleInput.value = DEMO_MEETING.titulo;
+  if (meetingAttendeesInput) meetingAttendeesInput.value = DEMO_MEETING.participantes.join(', ');
+  if (transcriptInput) {
+    transcriptInput.value = DEMO_BENCHMARK_TRANSCRIPT;
+    updateWordCount(DEMO_BENCHMARK_TRANSCRIPT);
+  }
+
+  state.rawTranscription = DEMO_BENCHMARK_TRANSCRIPT;
+  state.finalTranscript = DEMO_BENCHMARK_TRANSCRIPT;
+
+  renderMeetingResults(DEMO_MEETING);
+  enableProcessButton();
+
+  const resultsContainer = document.getElementById('results-container');
+  if (resultsContainer) {
+    resultsContainer.classList.remove('hidden');
+    resultsContainer.scrollIntoView({ behavior: 'smooth' });
+  }
+  showToast("Reunión de demostración cargada con su transcripción oficial.");
 }
 
 // Toast de notificación sutil (100% responsive)
@@ -808,13 +1244,7 @@ function setupHelpModal() {
   if (btnDemoHelp) {
     btnDemoHelp.addEventListener('click', () => {
       closeModal();
-      renderMeetingResults(DEMO_MEETING);
-      const resultsContainer = document.getElementById('results-container');
-      if (resultsContainer) {
-        resultsContainer.classList.remove('hidden');
-        resultsContainer.scrollIntoView({ behavior: 'smooth' });
-      }
-      showToast("Ejemplo de reunión cargado en la pantalla.");
+      loadBenchmarkDemo();
     });
   }
 

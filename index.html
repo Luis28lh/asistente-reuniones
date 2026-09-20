@@ -179,6 +179,33 @@
         </div>
       </div>
 
+      <!-- CAJA DE TRANSCRIPCIÓN EN TIEMPO REAL (SPEECH-TO-TEXT) -->
+      <div id="transcription-card" class="mt-5 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full bg-slate-400" id="stt-status-dot"></span>
+            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide">Transcripción de Audio en Tiempo Real (Texto Reconocido)</span>
+            <span id="stt-live-badge" class="hidden text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold animate-pulse">
+              🎙️ Escuchando y transcribiendo tu voz...
+            </span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span id="stt-word-count" class="font-mono text-slate-500 text-[11px]">0 palabras</span>
+            <button type="button" id="btn-clear-transcript" class="text-[11px] text-slate-500 hover:text-slate-800 underline transition cursor-pointer">
+              Limpiar
+            </button>
+          </div>
+        </div>
+
+        <p class="text-[11px] text-slate-500 leading-normal">
+          Al presionar <strong>"Iniciar Grabación"</strong> y hablar por el micrófono, tu voz se convertirá a texto aquí en vivo. También puedes escribir, dictar o editar este texto. <em>El Resumen Ejecutivo, Acuerdos y Compromisos se generarán analizando exactamente estas palabras.</em>
+        </p>
+
+        <div class="relative">
+          <textarea id="meeting-transcription-input" rows="4" placeholder="Esperando audio... Al grabar, lo que hables por el micrófono se convertirá en texto aquí en vivo. También puedes escribir o pegar notas de la reunión..." class="w-full text-xs sm:text-sm p-3.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 text-slate-800 placeholder:text-slate-400 leading-relaxed font-normal shadow-2xs resize-y"></textarea>
+        </div>
+      </div>
+
       <!-- Disparador de Procesamiento IA -->
       <div class="mt-6 pt-5 border-t border-slate-100">
         <button id="btn-process-ai" class="w-full py-3 px-6 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs uppercase tracking-wider rounded-lg shadow-xs flex items-center justify-center transition cursor-pointer">
@@ -256,6 +283,20 @@
         <div>
           <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Asistentes Convocados</h3>
           <div id="result-attendees" class="flex flex-wrap gap-2">
+            <!-- Inyectado por JS -->
+          </div>
+        </div>
+
+        <!-- Transcripción Original del Audio -->
+        <div class="border border-slate-200 rounded-lg p-3.5 bg-slate-50">
+          <div class="flex items-center justify-between cursor-pointer" id="toggle-raw-transcript">
+            <div class="flex items-center space-x-2">
+              <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"/></svg>
+              <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Texto Transcrito de la Grabación</h3>
+            </div>
+            <span id="toggle-transcript-text" class="text-[11px] text-slate-500 hover:text-slate-800 underline">Ocultar texto</span>
+          </div>
+          <div id="result-raw-transcript" class="mt-2.5 pt-2.5 border-t border-slate-200 text-xs text-slate-700 leading-relaxed font-mono bg-white p-3 rounded border border-slate-200 max-h-48 overflow-y-auto whitespace-pre-wrap">
             <!-- Inyectado por JS -->
           </div>
         </div>
@@ -448,13 +489,22 @@
             <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Si tu reunión fue grabada en Google Meet, Zoom, Teams o una grabadora móvil, simplemente arrastra el archivo aquí. Acepta MP3, WAV, M4A, OGG y MP4.</p>
           </div>
 
-          <!-- Botón 6 -->
+          <!-- Espacio 6: Transcripción -->
           <div class="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition">
             <div class="flex items-center space-x-2 mb-1.5">
-              <span class="w-5 h-5 rounded-full bg-slate-900 text-white font-mono text-[11px] font-bold flex items-center justify-center">6</span>
+              <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold flex items-center justify-center border border-slate-200">6</span>
+              <h5 class="text-xs font-bold text-slate-900">Casilla: "Transcripción de Audio en Tiempo Real"</h5>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Al grabar con el micrófono, tu voz se transforma automáticamente en texto en vivo. Puedes ver las palabras reconocidas y editarlas o agregar notas si lo deseas. <em>La IA utilizará este texto exacto para redactar el Resumen Ejecutivo, los Acuerdos y las Tareas de tu reunión real.</em></p>
+          </div>
+
+          <!-- Botón 7 -->
+          <div class="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition">
+            <div class="flex items-center space-x-2 mb-1.5">
+              <span class="w-5 h-5 rounded-full bg-slate-900 text-white font-mono text-[11px] font-bold flex items-center justify-center">7</span>
               <h5 class="text-xs font-bold text-slate-900">Botón: "Generar Minuta y Acuerdos con IA"</h5>
             </div>
-            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Es el botón central. Al pulsarlo, la IA analiza todo el audio, separa las intervenciones de los participantes y construye el resumen ejecutivo, la lista de acuerdos y la matriz de tareas en menos de 2 minutos.</p>
+            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Es el botón central. Al pulsarlo, el sistema toma el título, los participantes y la transcripción del audio grabado para estructurar el resumen ejecutivo, la lista de acuerdos y la matriz de tareas específicas de lo que hablaste.</p>
           </div>
 
           <!-- Espacio 7 y 8 -->
