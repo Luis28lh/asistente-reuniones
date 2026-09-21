@@ -676,13 +676,17 @@ function setupActionButtons() {
   const btnExportPdf = document.getElementById('btn-export-pdf');
   if (btnExportPdf) {
     btnExportPdf.addEventListener('click', () => {
-      exportMeetingToPdf();
+      exportMeetingToPdf(null, true);
     });
   }
 
   const btnSendEmail = document.getElementById('btn-send-email');
   if (btnSendEmail) {
     btnSendEmail.addEventListener('click', () => {
+      // Requerimiento del usuario: primero se debe ejecutar en PDF y luego habilitar el envío
+      if (!state.pdfGenerated) {
+        exportMeetingToPdf(null, true);
+      }
       openEmailDistributionModal();
     });
   }
@@ -1450,12 +1454,12 @@ function generateChatAnswer(q) {
 }
 
 // Exportación formal a PDF (Paleta neutra con tabla jsPDF)
-function exportMeetingToPdf(customData) {
+function exportMeetingToPdf(customData, triggerDownload = true) {
   const data = customData || state.currentMeetingData || DEMO_MEETING;
 
   if (typeof window.jspdf === 'undefined') {
     showToast("Librería PDF cargando, intenta en un momento.", true);
-    return;
+    return null;
   }
 
   const { jsPDF } = window.jspdf;
@@ -1569,8 +1573,21 @@ function exportMeetingToPdf(customData) {
     doc.text("Conformidad de Asistentes", 140, finalY + 16);
   }
 
-  doc.save(`Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf`);
-  showToast("Acta descargada en formato PDF formal.");
+  const filename = `Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf`;
+  const pdfBlob = doc.output('blob');
+
+  state.lastGeneratedPdfBlob = pdfBlob;
+  state.lastGeneratedPdfFilename = filename;
+  state.pdfGenerated = true;
+
+  if (triggerDownload !== false) {
+    doc.save(filename);
+    showToast("✓ Acta oficial ejecutada y descargada en PDF.");
+    const btnLabel = document.getElementById('btn-export-pdf-label');
+    if (btnLabel) btnLabel.textContent = "✓ 1. PDF Ejecutado";
+  }
+
+  return { doc, filename, blob: pdfBlob };
 }
 
 // ==========================================
@@ -1830,11 +1847,27 @@ function openEmailDistributionModal() {
   const modal = document.getElementById('modal-send-email');
   if (!modal) return;
 
+  // Requerimiento del usuario: primero se debe ejecutar en PDF
+  let pdfInfo = null;
+  if (!state.lastGeneratedPdfBlob) {
+    pdfInfo = exportMeetingToPdf(data, true);
+  } else {
+    pdfInfo = {
+      filename: state.lastGeneratedPdfFilename || `Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf`,
+      blob: state.lastGeneratedPdfBlob
+    };
+  }
+
+  const filename = pdfInfo?.filename || `Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf`;
+  const pdfNameEl = document.getElementById('email-pdf-attachment-name');
+  if (pdfNameEl) pdfNameEl.textContent = filename;
+
   const attendees = getStoredAttendees();
   const recipientEmails = attendees.map(a => a.email.trim()).filter(Boolean);
 
   const listEl = document.getElementById('email-recipients-list');
   const subjectInput = document.getElementById('email-subject-input');
+  const richPreview = document.getElementById('email-rich-preview');
   const bodyPreview = document.getElementById('email-body-preview');
   const emailCountBadge = document.getElementById('email-recipients-count');
 
@@ -1852,13 +1885,132 @@ function openEmailDistributionModal() {
     }
   }
 
-  const subject = `Minuta Oficial de Sesión: ${data.titulo}`;
+  // Asunto en texto como solicitó el usuario ("podemos deja el asunto así en el envío como texto")
+  const dateShort = data.fechaHora ? data.fechaHora.split(' ')[0] : new Date().toLocaleDateString('es-ES');
+  const subject = `Minuta Oficial de Sesión: ${data.titulo} (${dateShort})`;
   if (subjectInput) subjectInput.value = subject;
 
-  const formattedBody = generateEmailBodyText(data);
-  if (bodyPreview) bodyPreview.value = formattedBody;
+  // Correo personalizado con logo y contenido estructurado ("coloca tu logo de dónde lo estás enviando cuál es la información que le vas a enviar")
+  const richHtml = generateEmailHtml(data);
+  if (richPreview) richPreview.innerHTML = richHtml;
+
+  // Texto plano para clientes sencillos
+  const textBody = generateEmailBodyText(data);
+  if (bodyPreview) bodyPreview.value = textBody;
 
   modal.classList.remove('hidden');
+}
+
+function generateEmailHtml(data) {
+  const agreementsHtml = data.acuerdos && data.acuerdos.length > 0
+    ? data.acuerdos.map(a => `
+        <div style="padding: 7px 10px; margin-bottom: 5px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <strong style="color: #0f172a; font-family: monospace;">${escapeHtml(a.id)}:</strong>
+          <span style="color: #334155; margin-left: 4px;">${escapeHtml(a.descripcion)}</span>
+          <span style="display: inline-block; font-size: 10px; font-weight: bold; background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #cbd5e1; text-transform: uppercase;">${escapeHtml(a.impacto)}</span>
+        </div>
+      `).join('')
+    : '<p style="color: #64748b; font-style: italic;">Sin acuerdos específicos formalizados.</p>';
+
+  const tasksHtml = data.tareas && data.tareas.length > 0
+    ? data.tareas.map(t => `
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 6px 8px; font-family: monospace; font-weight: bold; color: #475569;">${escapeHtml(t.id)}</td>
+          <td style="padding: 6px 8px; color: #0f172a; font-weight: 500;">${escapeHtml(t.tarea)}</td>
+          <td style="padding: 6px 8px; color: #334155;">${escapeHtml(t.responsable)}</td>
+          <td style="padding: 6px 8px; font-family: monospace; color: #475569;">${escapeHtml(t.plazo)}</td>
+          <td style="padding: 6px 8px;"><span style="background: #f1f5f9; color: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; border: 1px solid #e2e8f0;">${escapeHtml(t.prioridad)}</span></td>
+        </tr>
+      `).join('')
+    : '<tr><td colspan="5" style="padding: 8px; color: #64748b; text-align: center;">Sin compromisos pendientes.</td></tr>';
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 650px; margin: 0 auto; color: #1e293b; line-height: 1.5; border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; background: #ffffff;">
+      
+      <!-- Membrete con Logo Institucional ("coloca tu logo de dónde lo estás enviando") -->
+      <div style="background-color: #0f172a; color: #ffffff; padding: 14px 18px; border-bottom: 3px solid #334155;">
+        <table style="width: 100%; border: none;">
+          <tr>
+            <td style="width: 40px; vertical-align: middle;">
+              <img src="https://luis28lh.github.io/asistente-reuniones/assets/icons/logo-buho.jpg" alt="Logo AIR" style="width: 34px; height: 34px; border-radius: 6px; border: 1px solid #475569; display: block; object-fit: cover;">
+            </td>
+            <td style="vertical-align: middle; padding-left: 10px;">
+              <h2 style="margin: 0; font-size: 14px; font-weight: 700; color: #ffffff; letter-spacing: -0.3px;">AIR — Asistente Inteligente de Reuniones</h2>
+              <p style="margin: 2px 0 0 0; font-size: 11px; color: #94a3b8;">Despacho Oficial de Minutas y Acuerdos de Sesión</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="padding: 16px;">
+        <p style="font-size: 13px; margin: 0 0 8px 0; color: #1e293b;">Estimados participantes,</p>
+        <p style="font-size: 12px; color: #475569; margin: 0 0 14px 0;">
+          Adjunto encontrarán el acta oficial en PDF y el resumen ejecutivo de la reunión celebrada:
+        </p>
+
+        <!-- Ficha de la reunión -->
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px;">
+          <p style="margin: 0 0 4px 0;"><strong>📌 SESIÓN:</strong> <span style="color: #0f172a;">${escapeHtml(data.titulo)}</span></p>
+          <p style="margin: 0 0 4px 0;"><strong>📅 FECHA Y DURACIÓN:</strong> <span style="color: #475569;">${escapeHtml(data.fechaHora)} · ${escapeHtml(data.duracion)}</span></p>
+          <p style="margin: 0;"><strong>👥 PARTICIPANTES:</strong> <span style="color: #334155;">${data.participantes ? escapeHtml(data.participantes.join('  •  ')) : ''}</span></p>
+        </div>
+
+        <!-- Resumen Ejecutivo -->
+        <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 14px 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 3px;">
+          📋 Resumen Ejecutivo
+        </h3>
+        <p style="font-size: 12px; color: #334155; line-height: 1.6; margin: 0 0 14px 0;">
+          ${escapeHtml(data.resumenEjecutivo)}
+        </p>
+
+        <!-- Acuerdos -->
+        <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 14px 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 3px;">
+          🤝 Acuerdos y Resoluciones Aprobadas
+        </h3>
+        <div style="margin: 6px 0 14px 0;">
+          ${agreementsHtml}
+        </div>
+
+        <!-- Matriz de Tareas -->
+        <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 14px 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 3px;">
+          🎯 Matriz de Compromisos (Action Items)
+        </h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0 14px 0; text-align: left; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <thead>
+            <tr style="background-color: #f1f5f9; color: #334155;">
+              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Código</th>
+              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Compromiso</th>
+              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Responsable</th>
+              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Fecha Límite</th>
+              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Prioridad</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tasksHtml}
+          </tbody>
+        </table>
+
+        <!-- Documento Adjunto Debajo ("y adjunta el PDF debajo") -->
+        <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 12px; margin-top: 14px;">
+          <table style="width: 100%; border: none;">
+            <tr>
+              <td style="width: 30px; vertical-align: middle;">
+                <div style="background-color: #dc2626; color: #ffffff; font-weight: bold; font-size: 10px; width: 26px; height: 26px; line-height: 26px; text-align: center; border-radius: 4px;">PDF</div>
+              </td>
+              <td style="vertical-align: middle; padding-left: 8px;">
+                <p style="margin: 0; font-size: 11px; font-weight: bold; color: #991b1b;">📎 Documento Adjunto: Acta_${escapeHtml(data.titulo.replace(/[\s\W]+/g, '_'))}.pdf</p>
+                <p style="margin: 1px 0 0 0; font-size: 10px; color: #b91c1c;">Acta oficial con membrete corporativo, tabla de acuerdos y firmas</p>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <p style="font-size: 10px; color: #94a3b8; margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+          Emitido por <strong>AIR v1.1 — Asistente Inteligente de Reuniones</strong>.
+        </p>
+      </div>
+    </div>
+  `;
 }
 
 function generateEmailBodyText(data) {
@@ -1872,7 +2024,7 @@ function generateEmailBodyText(data) {
 
   return `Estimados participantes,
 
-Adjuntamos la minuta oficial de la sesión:
+Compartimos la minuta oficial con los temas tratados, acuerdos y tareas formalizadas en la sesión:
 
 SESIÓN: ${data.titulo}
 FECHA Y DURACIÓN: ${data.fechaHora} · ${data.duracion}
@@ -1884,7 +2036,7 @@ RESUMEN EJECUTIVO:
 ${data.resumenEjecutivo}
 
 ==================================================
-ACUERDOS Y RESOLUCIONES:
+ACUERDOS Y RESOLUCIONES APROBADAS:
 ==================================================
 ${agreementsText}
 
@@ -1892,6 +2044,11 @@ ${agreementsText}
 MATRIZ DE COMPROMISOS (ACTION ITEMS):
 ==================================================
 ${tasksText}
+
+==================================================
+📎 DOCUMENTO ADJUNTO:
+==================================================
+Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf (Acta formal con firmas institucionales)
 
 --------------------------------------------------
 Documento emitido por AIR v1.1 — Asistente Inteligente de Reuniones.
@@ -1901,9 +2058,10 @@ Documento emitido por AIR v1.1 — Asistente Inteligente de Reuniones.
 function setupEmailModal() {
   const modal = document.getElementById('modal-send-email');
   const btnClose = document.getElementById('btn-close-email-modal');
-  const btnCopy = document.getElementById('btn-copy-email-text');
+  const btnCopyHtml = document.getElementById('btn-copy-email-html');
+  const btnCopyText = document.getElementById('btn-copy-email-text');
   const btnConfirm = document.getElementById('btn-confirm-send-email');
-  const bodyPreview = document.getElementById('email-body-preview');
+  const btnDownloadPdf = document.getElementById('btn-modal-download-pdf');
   const subjectInput = document.getElementById('email-subject-input');
 
   if (!modal) return;
@@ -1914,35 +2072,85 @@ function setupEmailModal() {
     if (e.target === modal) closeModal();
   });
 
-  if (btnCopy) {
-    btnCopy.addEventListener('click', () => {
-      const text = bodyPreview ? bodyPreview.value : '';
-      if (!text) return;
+  if (btnDownloadPdf) {
+    btnDownloadPdf.addEventListener('click', () => {
+      exportMeetingToPdf(state.currentMeetingData, true);
+    });
+  }
+
+  if (btnCopyHtml) {
+    btnCopyHtml.addEventListener('click', async () => {
+      const data = state.currentMeetingData || DEMO_MEETING;
+      const html = generateEmailHtml(data);
+      const text = generateEmailBodyText(data);
+
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          const item = new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([item]);
+          showToast("✓ ¡Correo con diseño y logo copiado! Pégalo en tu correo.");
+          return;
+        }
+      } catch (err) {}
+
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("Texto del correo copiado.");
+      });
+    });
+  }
+
+  if (btnCopyText) {
+    btnCopyText.addEventListener('click', () => {
+      const data = state.currentMeetingData || DEMO_MEETING;
+      const text = generateEmailBodyText(data);
       navigator.clipboard.writeText(text).then(() => {
         showToast("✓ Texto del correo copiado al portapapeles.");
-      }).catch(() => {
-        showToast("No se pudo copiar el texto.", true);
       });
     });
   }
 
   if (btnConfirm) {
-    btnConfirm.addEventListener('click', () => {
+    btnConfirm.addEventListener('click', async () => {
+      const data = state.currentMeetingData || DEMO_MEETING;
       const attendees = getStoredAttendees();
       const recipientEmails = attendees.map(a => a.email.trim()).filter(Boolean);
-      const subject = subjectInput ? subjectInput.value : 'Minuta de Reunión';
-      const body = bodyPreview ? bodyPreview.value : '';
-
+      const subject = subjectInput ? subjectInput.value : `Minuta: ${data.titulo}`;
+      const text = generateEmailBodyText(data);
       const toStr = recipientEmails.join(',');
-      const mailtoUrl = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+      // 1. Si el navegador soporta adjuntar archivos directamente (dispositivos móviles)
+      if (navigator.canShare && state.lastGeneratedPdfBlob) {
+        try {
+          const pdfFile = new File([state.lastGeneratedPdfBlob], state.lastGeneratedPdfFilename || 'Acta_Minuta.pdf', { type: 'application/pdf' });
+          if (navigator.canShare({ files: [pdfFile] })) {
+            await navigator.share({
+              title: subject,
+              text: `Estimados participantes:\n\nAdjuntamos el acta oficial en PDF de la sesión "${data.titulo}".\n\n${data.resumenEjecutivo}`,
+              files: [pdfFile]
+            });
+            showToast("✓ Compartido con el archivo PDF adjunto.");
+            return;
+          }
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+
+      // 2. En computadoras: asegurar que el PDF esté en Descargas y abrir mailto:
+      if (!state.lastGeneratedPdfBlob) {
+        exportMeetingToPdf(data, true);
+      }
       
+      const mailtoUrl = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
       if (mailtoUrl.length > 1900) {
-        navigator.clipboard.writeText(body).then(() => {
-          showToast("El cuerpo es extenso: se copió al portapapeles y se abrió tu gestor de correo.");
-        });
-        const shortMailto = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}`;
-        window.location.href = shortMailto;
+        navigator.clipboard.writeText(text);
+        showToast("El cuerpo es extenso: se copió al portapapeles y se descargó el PDF.");
+        window.location.href = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}`;
       } else {
+        showToast("✓ Abriendo cliente de correo. Adjunta el archivo PDF descargado.");
         window.location.href = mailtoUrl;
       }
     });
