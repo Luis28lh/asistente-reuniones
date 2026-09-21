@@ -2,6 +2,12 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+let nodemailer = null;
+try {
+  nodemailer = require('nodemailer');
+} catch (_) {
+  console.log('[AIR Server] nodemailer no instalado');
+}
 
 const PORT = process.env.PORT || 3005;
 const PUBLIC_DIR = __dirname;
@@ -94,6 +100,102 @@ const server = http.createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ success: false, error: err.message }));
     }
+    return;
+  }
+
+  // API 3: Despacho de correo oficial personalizado con logo y PDF adjunto
+  if (req.method === 'POST' && reqUrl === '/api/send-email') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!nodemailer) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ success: false, error: 'El módulo nodemailer no está disponible en el servidor.' }));
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const { to, subject, html, text, pdfBase64, pdfFilename, smtp } = payload;
+
+        if (!to || (Array.isArray(to) && to.length === 0)) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ success: false, error: 'No se indicaron correos destinatarios.' }));
+          return;
+        }
+
+        let transporter;
+        const smtpHost = smtp?.host || process.env.SMTP_HOST;
+        const smtpUser = smtp?.user || process.env.SMTP_USER;
+        const smtpPass = smtp?.pass || process.env.SMTP_PASS;
+        const smtpPort = Number(smtp?.port || process.env.SMTP_PORT || 587);
+
+        let isTest = false;
+        if (smtpHost && smtpUser && smtpPass) {
+          transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: smtpPort,
+            secure: smtpPort === 465,
+            auth: {
+              user: smtpUser,
+              pass: smtpPass
+            }
+          });
+        } else {
+          // Si no se proporcionaron credenciales SMTP personalizadas, usamos buzón seguro de prueba Ethereal
+          isTest = true;
+          const testAccount = await nodemailer.createTestAccount();
+          transporter = nodemailer.createTransport({
+            host: 'smtp.ethereal.email',
+            port: 587,
+            secure: false,
+            auth: {
+              user: testAccount.user,
+              pass: testAccount.pass
+            }
+          });
+        }
+
+        const attachments = [];
+        if (pdfBase64) {
+          const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+          attachments.push({
+            filename: pdfFilename || 'Acta_Minuta_Oficial.pdf',
+            content: Buffer.from(cleanBase64, 'base64'),
+            contentType: 'application/pdf'
+          });
+        }
+
+        const fromAddress = smtpUser
+          ? `"AIR — Asistente de Reuniones" <${smtpUser}>`
+          : '"AIR — Asistente de Reuniones" <despacho@air-reuniones.local>';
+
+        const recipientsList = Array.isArray(to) ? to.join(', ') : to;
+
+        const info = await transporter.sendMail({
+          from: fromAddress,
+          to: recipientsList,
+          subject: subject || 'Minuta Oficial de Sesión',
+          text: text || '',
+          html: html || '',
+          attachments
+        });
+
+        const testPreviewUrl = isTest ? nodemailer.getTestMessageUrl(info) : null;
+
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          success: true,
+          messageId: info.messageId,
+          isTest,
+          testPreviewUrl,
+          accepted: info.accepted
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
     return;
   }
 

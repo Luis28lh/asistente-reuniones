@@ -1,0 +1,25 @@
+{
+  "name": "asistente-reuniones",
+  "version": "1.0.0",
+  "description": "[![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue.svg)](https://luis28lh.github.io/asistente-reuniones/) [![Status](https://img.shields.io/badge/Status-Producci%C3%B3n%20Listo-success.svg)]() [![Responsive](https://img.shields.io/badge/Mobile-100%25%20Responsive-orange.svg)]()",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Luis28lh/asistente-reuniones.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Luis28lh/asistente-reuniones/issues"
+  },
+  "homepage": "https://github.com/Luis28lh/asistente-reuniones#readme",
+  "dependencies": {
+    "nodemailer": "^10.0.10"
+  }
+}

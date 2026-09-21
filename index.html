@@ -766,82 +766,96 @@
   </div>
 
   <!-- MODAL: ENVIAR MINUTA A PARTICIPANTES POR CORREO -->
-  <div id="modal-send-email" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 hidden">
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full flex flex-col max-h-[92vh] overflow-hidden">
+  <div id="modal-send-email" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 hidden">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full flex flex-col max-h-[94vh] overflow-hidden">
       
       <!-- Encabezado del Modal con Logo Corporativo Oficial -->
-      <div class="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+      <div class="px-4 sm:px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
         <div class="flex items-center space-x-3">
-          <img src="assets/icons/logo-buho.jpg" alt="Logo AIR" class="w-8 h-8 rounded-lg object-cover border border-slate-300 shadow-2xs shrink-0">
+          <img src="assets/icons/logo-buho.jpg" alt="Logo AIR" class="w-8 h-8 rounded-lg object-cover border border-slate-700 shadow-2xs shrink-0">
           <div>
             <div class="flex items-center space-x-2">
-              <h3 class="text-xs sm:text-sm font-bold text-slate-900">Despacho Oficial de Minuta</h3>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">Personalizado</span>
+              <h3 class="text-xs sm:text-sm font-bold text-white">Despacho Oficial de Minuta</h3>
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Personalizado</span>
             </div>
-            <p class="text-[11px] text-slate-500">AIR — Sistema Corporativo de Gestión de Actas</p>
+            <p class="text-[11px] text-slate-300">Emisión institucional con membrete, información oficial y documento PDF adjunto</p>
           </div>
         </div>
-        <button id="btn-close-email-modal" class="text-slate-400 hover:text-slate-700 text-xl font-bold p-1 cursor-pointer">&times;</button>
+        <button id="btn-close-email-modal" class="text-slate-400 hover:text-white text-xl font-bold p-1 cursor-pointer transition">&times;</button>
       </div>
 
       <!-- Contenido Scrolleable del Correo -->
-      <div class="p-5 overflow-y-auto space-y-4 text-xs">
+      <div class="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs bg-slate-50/50">
         
-        <!-- 1. Destinatarios Registrados -->
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Destinatarios Convocados (Registrados vía QR):</label>
-          <div id="email-recipients-list" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 max-h-24 overflow-y-auto break-all">
-            (Sin correos registrados aún)
+        <!-- Ficha de Destinatarios y Asunto -->
+        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+          <!-- 1. Destinatarios Registrados -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block font-bold text-slate-800">Destinatarios Convocados (Registrados vía QR):</label>
+              <span class="text-[10px] text-slate-400 font-mono">Total: <strong id="email-recipients-count-modal">0</strong> correos</span>
+            </div>
+            <div id="email-recipients-list" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 max-h-20 overflow-y-auto break-all">
+              (Sin correos registrados aún)
+            </div>
+          </div>
+
+          <!-- 2. Asunto del Correo (Texto editable) -->
+          <div>
+            <label class="block font-bold text-slate-800 mb-1">Asunto del Correo (Texto Oficial):</label>
+            <input type="text" id="email-subject-input" class="w-full text-xs px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium focus:outline-none focus:ring-1 focus:ring-slate-400">
           </div>
         </div>
 
-        <!-- 2. Asunto del Correo (Texto editable) -->
+        <!-- 3. Vista Previa Real del Correo que se enviará (Logo de origen + Información + PDF adjunto debajo) -->
         <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Asunto del Correo:</label>
-          <input type="text" id="email-subject-input" class="w-full text-xs px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium focus:outline-none focus:ring-1 focus:ring-slate-400">
-        </div>
-
-        <!-- 3. Vista Previa del Mensaje Personalizado (Logo de Origen + Información Formal) -->
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label class="text-xs font-semibold text-slate-700">Contenido Personalizado del Mensaje:</label>
-            <span class="text-[10px] text-slate-400 font-medium">Incluye logo de origen, resumen, acuerdos y tareas</span>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="font-bold text-slate-800 flex items-center gap-1.5">
+              <span>✉️ Formato de Correo Personalizado:</span>
+            </label>
+            <span class="text-[10px] text-slate-500">Logo de origen &bull; Resumen &bull; Acuerdos &bull; Matriz de tareas &bull; PDF adjunto</span>
           </div>
 
-          <div class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50 shadow-2xs">
-            <!-- Membrete con Logo en el Correo ("coloca tu logo de dónde lo estás enviando") -->
-            <div class="p-3 bg-slate-900 text-white flex items-center space-x-3">
-              <img src="assets/icons/logo-buho.jpg" alt="Logo de Origen" class="w-7 h-7 rounded object-cover border border-slate-700 shrink-0">
-              <div class="min-w-0">
-                <p class="text-xs font-bold truncate">AIR — Asistente Inteligente de Reuniones</p>
-                <p class="text-[10px] text-slate-300 truncate">Origen: Despacho Oficial de Minutas y Acuerdos de Sesión</p>
-              </div>
-            </div>
-
-            <!-- Cuerpo del Correo en Vista Previa Enriquecida ("cuál es la información que le vas a enviar") -->
-            <div id="email-rich-preview" class="p-4 bg-white text-slate-800 space-y-3 font-sans text-xs border-b border-slate-100 max-h-52 overflow-y-auto leading-relaxed">
-              <!-- Inyectado dinámicamente por JS -->
-            </div>
-            
-            <textarea id="email-body-preview" class="hidden"></textarea>
+          <!-- El contenedor muestra el correo COMPLETO tal como llega al destinatario -->
+          <div id="email-rich-preview" class="border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white max-h-96 overflow-y-auto">
+            <!-- Inyectado dinámicamente por JS: Contiene el logo de origen en membrete, la información de la reunión y el PDF adjunto debajo -->
           </div>
+          
+          <textarea id="email-body-preview" class="hidden"></textarea>
         </div>
 
-        <!-- 4. SECCIÓN: ADJUNTO DEL PDF DEBAJO ("adjunta el PDF debajo") -->
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Documento PDF Adjunto:</label>
-          <div class="p-3 bg-red-50/60 border border-red-200 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
-            <div class="flex items-center space-x-3 min-w-0">
-              <div class="w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs shrink-0">
-                PDF
-              </div>
-              <div class="min-w-0">
-                <p id="email-pdf-attachment-name" class="text-xs font-bold text-slate-900 truncate">Acta_Oficial_Sesion.pdf</p>
-                <p class="text-[10px] text-slate-500 truncate">Documento formal con membrete institucional, acuerdos y firmas</p>
-              </div>
+        <!-- 4. Panel de Configuración SMTP Opcional -->
+        <div id="smtp-config-panel" class="hidden bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+            <h4 class="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+              <span>⚙️ Servidor de Envío SMTP (Opcional):</span>
+            </h4>
+            <span class="text-[10px] text-slate-400">Permite despachar directo desde tu cuenta de correo</span>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            Puedes configurar tu cuenta de Gmail (con contraseña de aplicación), Outlook o SMTP empresarial. Si no configuras nada, el sistema enviará en modo de prueba segura con reporte visual instantáneo.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <div>
+              <label class="block text-[10px] text-slate-500 mb-0.5">Servidor SMTP</label>
+              <input type="text" id="smtp-host-input" placeholder="smtp.gmail.com" class="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-md">
             </div>
-            <button type="button" id="btn-modal-download-pdf" class="px-3 py-1.5 text-[11px] font-semibold bg-white hover:bg-slate-100 text-slate-800 rounded-lg border border-slate-300 shadow-2xs transition cursor-pointer shrink-0">
-              Descargar PDF
+            <div>
+              <label class="block text-[10px] text-slate-500 mb-0.5">Puerto</label>
+              <input type="number" id="smtp-port-input" placeholder="587 ó 465" class="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-md">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-500 mb-0.5">Tu Correo Remitente</label>
+              <input type="email" id="smtp-user-input" placeholder="tu-correo@empresa.com" class="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-md">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-500 mb-0.5">Contraseña / App Password</label>
+              <input type="password" id="smtp-pass-input" placeholder="••••••••••••" class="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-md">
+            </div>
+          </div>
+          <div class="flex justify-end pt-1">
+            <button type="button" id="btn-save-smtp" class="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded text-xs font-semibold cursor-pointer">
+              Guardar Configuración
             </button>
           </div>
         </div>
@@ -849,19 +863,26 @@
       </div>
 
       <!-- Pie del Modal con Acciones de Envío y Copiado -->
-      <div class="p-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-2.5">
-        <div class="flex items-center space-x-2 w-full sm:w-auto">
-          <button type="button" id="btn-copy-email-html" class="w-full sm:w-auto px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-white bg-slate-100 rounded-lg border border-slate-300 cursor-pointer shadow-2xs transition">
-            📋 Copiar Correo con Logo
+      <div class="p-3.5 sm:p-4 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-2.5">
+        <div class="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+          <button type="button" id="btn-copy-email-html" class="px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 bg-white rounded-lg border border-slate-300 cursor-pointer shadow-2xs transition flex items-center gap-1">
+            📋 Copiar con Logo
           </button>
-          <button type="button" id="btn-copy-email-text" class="w-full sm:w-auto px-3 py-2 text-xs font-medium text-slate-600 hover:bg-white bg-slate-100 rounded-lg border border-slate-300 cursor-pointer shadow-2xs transition">
-            Copiar Texto
+          <button type="button" id="btn-open-gmail-web" class="px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 bg-red-50/50 rounded-lg border border-red-200 cursor-pointer shadow-2xs transition flex items-center gap-1">
+            <svg class="w-3.5 h-3.5 text-red-600" fill="currentColor" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+            Gmail Web
+          </button>
+          <button type="button" id="btn-modal-download-pdf" class="px-2.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 bg-white rounded-lg border border-slate-300 cursor-pointer shadow-2xs transition flex items-center gap-1">
+            ⬇️ Descargar PDF
+          </button>
+          <button type="button" id="btn-toggle-smtp" class="px-2 py-2 text-xs text-slate-500 hover:text-slate-800 bg-slate-100 rounded-lg border border-slate-200 cursor-pointer" title="Configurar SMTP">
+            ⚙️
           </button>
         </div>
 
-        <button type="button" id="btn-confirm-send-email" class="w-full sm:w-auto px-5 py-2.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center space-x-2 shadow-2xs transition cursor-pointer">
+        <button type="button" id="btn-confirm-send-email" class="w-full sm:w-auto px-5 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center space-x-2 shadow-sm transition cursor-pointer">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
-          <span id="btn-confirm-send-email-label">Abrir Correo y Despachar</span>
+          <span id="btn-confirm-send-email-label">Enviar Minuta Ahora</span>
         </button>
       </div>
 

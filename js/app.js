@@ -1870,15 +1870,17 @@ function openEmailDistributionModal() {
   const richPreview = document.getElementById('email-rich-preview');
   const bodyPreview = document.getElementById('email-body-preview');
   const emailCountBadge = document.getElementById('email-recipients-count');
+  const emailCountModal = document.getElementById('email-recipients-count-modal');
 
   if (emailCountBadge) emailCountBadge.textContent = recipientEmails.length;
+  if (emailCountModal) emailCountModal.textContent = recipientEmails.length;
 
   if (listEl) {
     if (recipientEmails.length === 0) {
       listEl.innerHTML = `<span class="text-amber-700 italic">No hay correos registrados vía QR. Puedes agregarlos desde el botón "+ Agregar Manual" en la sección de participantes.</span>`;
     } else {
       listEl.innerHTML = attendees.map(a => `
-        <span class="inline-block bg-white border border-slate-200 rounded px-2 py-0.5 mr-1.5 mb-1 text-[11px]">
+        <span class="inline-block bg-white border border-slate-200 rounded px-2 py-0.5 mr-1.5 mb-1 text-[11px] shadow-2xs">
           <strong>${escapeHtml(a.nombre)}</strong> &lt;${escapeHtml(a.email)}&gt;
         </span>
       `).join('');
@@ -1890,123 +1892,174 @@ function openEmailDistributionModal() {
   const subject = `Minuta Oficial de Sesión: ${data.titulo} (${dateShort})`;
   if (subjectInput) subjectInput.value = subject;
 
-  // Correo personalizado con logo y contenido estructurado ("coloca tu logo de dónde lo estás enviando cuál es la información que le vas a enviar")
+  // Correo personalizado con logo de origen, información completa y PDF adjunto debajo
   const richHtml = generateEmailHtml(data);
   if (richPreview) richPreview.innerHTML = richHtml;
 
-  // Texto plano para clientes sencillos
+  // Texto plano para compatibilidad
   const textBody = generateEmailBodyText(data);
   if (bodyPreview) bodyPreview.value = textBody;
 
+  loadSmtpInputs();
+
   modal.classList.remove('hidden');
+}
+
+function getStoredSmtpConfig() {
+  try {
+    const raw = localStorage.getItem('air_smtp_config');
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function loadSmtpInputs() {
+  const cfg = getStoredSmtpConfig();
+  if (!cfg) return;
+  const host = document.getElementById('smtp-host-input');
+  const port = document.getElementById('smtp-port-input');
+  const user = document.getElementById('smtp-user-input');
+  const pass = document.getElementById('smtp-pass-input');
+  if (host && cfg.host) host.value = cfg.host;
+  if (port && cfg.port) port.value = cfg.port;
+  if (user && cfg.user) user.value = cfg.user;
+  if (pass && cfg.pass) pass.value = cfg.pass;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 function generateEmailHtml(data) {
   const agreementsHtml = data.acuerdos && data.acuerdos.length > 0
     ? data.acuerdos.map(a => `
-        <div style="padding: 7px 10px; margin-bottom: 5px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px;">
-          <strong style="color: #0f172a; font-family: monospace;">${escapeHtml(a.id)}:</strong>
-          <span style="color: #334155; margin-left: 4px;">${escapeHtml(a.descripcion)}</span>
-          <span style="display: inline-block; font-size: 10px; font-weight: bold; background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #cbd5e1; text-transform: uppercase;">${escapeHtml(a.impacto)}</span>
+        <div style="padding: 9px 12px; margin-bottom: 7px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #0f172a; border-radius: 6px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px;">
+            <strong style="color: #0f172a; font-family: monospace; font-size: 11px;">[${escapeHtml(a.id)}]</strong>
+            <span style="display: inline-block; font-size: 10px; font-weight: bold; background: #e2e8f0; color: #334155; padding: 1px 6px; border-radius: 4px; text-transform: uppercase;">Impacto: ${escapeHtml(a.impacto)}</span>
+          </div>
+          <div style="color: #334155; font-size: 12px; line-height: 1.4;">${escapeHtml(a.descripcion)}</div>
         </div>
       `).join('')
-    : '<p style="color: #64748b; font-style: italic;">Sin acuerdos específicos formalizados.</p>';
+    : '<p style="color: #64748b; font-style: italic; font-size: 12px;">Sin acuerdos específicos formalizados.</p>';
 
   const tasksHtml = data.tareas && data.tareas.length > 0
     ? data.tareas.map(t => `
         <tr style="border-bottom: 1px solid #e2e8f0;">
-          <td style="padding: 6px 8px; font-family: monospace; font-weight: bold; color: #475569;">${escapeHtml(t.id)}</td>
-          <td style="padding: 6px 8px; color: #0f172a; font-weight: 500;">${escapeHtml(t.tarea)}</td>
-          <td style="padding: 6px 8px; color: #334155;">${escapeHtml(t.responsable)}</td>
-          <td style="padding: 6px 8px; font-family: monospace; color: #475569;">${escapeHtml(t.plazo)}</td>
-          <td style="padding: 6px 8px;"><span style="background: #f1f5f9; color: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; border: 1px solid #e2e8f0;">${escapeHtml(t.prioridad)}</span></td>
+          <td style="padding: 7px 9px; font-family: monospace; font-weight: bold; color: #475569; font-size: 11px;">${escapeHtml(t.id)}</td>
+          <td style="padding: 7px 9px; color: #0f172a; font-weight: 600; font-size: 11px;">${escapeHtml(t.tarea)}</td>
+          <td style="padding: 7px 9px; color: #334155; font-size: 11px;">${escapeHtml(t.responsable)}</td>
+          <td style="padding: 7px 9px; font-family: monospace; color: #475569; font-size: 11px;">${escapeHtml(t.plazo)}</td>
+          <td style="padding: 7px 9px;"><span style="background: #f1f5f9; color: #0f172a; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; border: 1px solid #e2e8f0;">${escapeHtml(t.prioridad)}</span></td>
         </tr>
       `).join('')
-    : '<tr><td colspan="5" style="padding: 8px; color: #64748b; text-align: center;">Sin compromisos pendientes.</td></tr>';
+    : '<tr><td colspan="5" style="padding: 10px; color: #64748b; text-align: center; font-size: 12px;">Sin compromisos pendientes.</td></tr>';
+
+  const cleanFilename = `Acta_${(data.titulo || 'Sesion').replace(/[\s\W]+/g, '_')}.pdf`;
 
   return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 650px; margin: 0 auto; color: #1e293b; line-height: 1.5; border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; background: #ffffff;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 660px; margin: 0 auto; color: #1e293b; line-height: 1.5; background: #ffffff;">
       
-      <!-- Membrete con Logo Institucional ("coloca tu logo de dónde lo estás enviando") -->
-      <div style="background-color: #0f172a; color: #ffffff; padding: 14px 18px; border-bottom: 3px solid #334155;">
-        <table style="width: 100%; border: none;">
+      <!-- 1. MEMBRETE CON LOGO Y ORIGEN ("coloca tu logo de dónde lo estás enviando") -->
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; padding: 18px 22px; border-bottom: 3px solid #059669;">
+        <table style="width: 100%; border: none; border-collapse: collapse;">
           <tr>
-            <td style="width: 40px; vertical-align: middle;">
-              <img src="https://luis28lh.github.io/asistente-reuniones/assets/icons/logo-buho.jpg" alt="Logo AIR" style="width: 34px; height: 34px; border-radius: 6px; border: 1px solid #475569; display: block; object-fit: cover;">
+            <td style="width: 46px; vertical-align: middle;">
+              <img src="https://luis28lh.github.io/asistente-reuniones/assets/icons/logo-buho.jpg" alt="Logo Corporativo AIR" style="width: 40px; height: 40px; border-radius: 8px; border: 2px solid #475569; display: block; object-fit: cover; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
             </td>
-            <td style="vertical-align: middle; padding-left: 10px;">
-              <h2 style="margin: 0; font-size: 14px; font-weight: 700; color: #ffffff; letter-spacing: -0.3px;">AIR — Asistente Inteligente de Reuniones</h2>
-              <p style="margin: 2px 0 0 0; font-size: 11px; color: #94a3b8;">Despacho Oficial de Minutas y Acuerdos de Sesión</p>
+            <td style="vertical-align: middle; padding-left: 12px;">
+              <div style="font-size: 15px; font-weight: 800; color: #ffffff; letter-spacing: -0.2px; line-height: 1.2;">AIR — Asistente Inteligente de Reuniones</div>
+              <div style="font-size: 11px; color: #cbd5e1; margin-top: 3px;">
+                🏢 <strong>Enviado desde:</strong> Despacho Oficial de Minutas y Acuerdos de Sesión
+              </div>
+              <div style="font-size: 10px; color: #6ee7b7; margin-top: 2px;">
+                ✓ Certificación Institucional de Deliberaciones y Compromisos
+              </div>
             </td>
           </tr>
         </table>
       </div>
 
-      <div style="padding: 16px;">
-        <p style="font-size: 13px; margin: 0 0 8px 0; color: #1e293b;">Estimados participantes,</p>
-        <p style="font-size: 12px; color: #475569; margin: 0 0 14px 0;">
-          Adjunto encontrarán el acta oficial en PDF y el resumen ejecutivo de la reunión celebrada:
+      <!-- 2. INFORMACIÓN QUE LE VAS A ENVIAR ("cuál es la información que le vas a enviar") -->
+      <div style="padding: 20px 22px;">
+        <p style="font-size: 13px; margin: 0 0 6px 0; color: #1e293b; font-weight: 600;">Estimados participantes,</p>
+        <p style="font-size: 12px; color: #475569; margin: 0 0 16px 0; line-height: 1.5;">
+          A continuación compartimos la minuta oficial con los temas tratados, las resoluciones formalizadas y la matriz de compromisos asignados en la sesión:
         </p>
 
         <!-- Ficha de la reunión -->
-        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px;">
-          <p style="margin: 0 0 4px 0;"><strong>📌 SESIÓN:</strong> <span style="color: #0f172a;">${escapeHtml(data.titulo)}</span></p>
-          <p style="margin: 0 0 4px 0;"><strong>📅 FECHA Y DURACIÓN:</strong> <span style="color: #475569;">${escapeHtml(data.fechaHora)} · ${escapeHtml(data.duracion)}</span></p>
-          <p style="margin: 0;"><strong>👥 PARTICIPANTES:</strong> <span style="color: #334155;">${data.participantes ? escapeHtml(data.participantes.join('  •  ')) : ''}</span></p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; font-size: 12px;">
+          <p style="margin: 0 0 5px 0;"><strong>📌 SESIÓN:</strong> <span style="color: #0f172a; font-weight: 700;">${escapeHtml(data.titulo)}</span></p>
+          <p style="margin: 0 0 5px 0;"><strong>📅 FECHA Y DURACIÓN:</strong> <span style="color: #475569;">${escapeHtml(data.fechaHora)} &bull; ${escapeHtml(data.duracion)}</span></p>
+          <p style="margin: 0;"><strong>👥 ASISTENTES CONVOCADOS:</strong> <span style="color: #334155;">${data.participantes && data.participantes.length > 0 ? escapeHtml(data.participantes.join('  •  ')) : 'Participantes registrados vía QR'}</span></p>
         </div>
 
         <!-- Resumen Ejecutivo -->
-        <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 14px 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 3px;">
+        <h3 style="font-size: 11px; font-weight: 800; color: #0f172a; margin: 16px 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">
           📋 Resumen Ejecutivo
         </h3>
-        <p style="font-size: 12px; color: #334155; line-height: 1.6; margin: 0 0 14px 0;">
+        <p style="font-size: 12px; color: #334155; line-height: 1.6; margin: 0 0 16px 0; background-color: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #f1f5f9;">
           ${escapeHtml(data.resumenEjecutivo)}
         </p>
 
         <!-- Acuerdos -->
-        <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 14px 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 3px;">
+        <h3 style="font-size: 11px; font-weight: 800; color: #0f172a; margin: 16px 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">
           🤝 Acuerdos y Resoluciones Aprobadas
         </h3>
-        <div style="margin: 6px 0 14px 0;">
+        <div style="margin: 8px 0 16px 0;">
           ${agreementsHtml}
         </div>
 
         <!-- Matriz de Tareas -->
-        <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 14px 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 3px;">
+        <h3 style="font-size: 11px; font-weight: 800; color: #0f172a; margin: 16px 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">
           🎯 Matriz de Compromisos (Action Items)
         </h3>
-        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0 14px 0; text-align: left; border: 1px solid #e2e8f0; border-radius: 6px;">
-          <thead>
-            <tr style="background-color: #f1f5f9; color: #334155;">
-              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Código</th>
-              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Compromiso</th>
-              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Responsable</th>
-              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Fecha Límite</th>
-              <th style="padding: 5px 8px; border-bottom: 1px solid #cbd5e1;">Prioridad</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tasksHtml}
-          </tbody>
-        </table>
+        <div style="overflow-x: auto; margin: 8px 0 18px 0;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; border: 1px solid #e2e8f0; border-radius: 6px;">
+            <thead>
+              <tr style="background-color: #f1f5f9; color: #334155;">
+                <th style="padding: 7px 9px; border-bottom: 2px solid #cbd5e1;">Código</th>
+                <th style="padding: 7px 9px; border-bottom: 2px solid #cbd5e1;">Compromiso</th>
+                <th style="padding: 7px 9px; border-bottom: 2px solid #cbd5e1;">Responsable</th>
+                <th style="padding: 7px 9px; border-bottom: 2px solid #cbd5e1;">Fecha Límite</th>
+                <th style="padding: 7px 9px; border-bottom: 2px solid #cbd5e1;">Prioridad</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tasksHtml}
+            </tbody>
+          </table>
+        </div>
 
-        <!-- Documento Adjunto Debajo ("y adjunta el PDF debajo") -->
-        <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 12px; margin-top: 14px;">
-          <table style="width: 100%; border: none;">
+        <!-- 3. DOCUMENTO PDF ADJUNTO DEBAJO ("y adjunta el PDF debajo") -->
+        <div style="background-color: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 12px 15px; margin-top: 18px;">
+          <table style="width: 100%; border: none; border-collapse: collapse;">
             <tr>
-              <td style="width: 30px; vertical-align: middle;">
-                <div style="background-color: #dc2626; color: #ffffff; font-weight: bold; font-size: 10px; width: 26px; height: 26px; line-height: 26px; text-align: center; border-radius: 4px;">PDF</div>
+              <td style="width: 44px; vertical-align: middle;">
+                <div style="background-color: #dc2626; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 800; font-size: 11px; width: 36px; height: 36px; line-height: 36px; text-align: center; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">
+                  PDF
+                </div>
               </td>
-              <td style="vertical-align: middle; padding-left: 8px;">
-                <p style="margin: 0; font-size: 11px; font-weight: bold; color: #991b1b;">📎 Documento Adjunto: Acta_${escapeHtml(data.titulo.replace(/[\s\W]+/g, '_'))}.pdf</p>
-                <p style="margin: 1px 0 0 0; font-size: 10px; color: #b91c1c;">Acta oficial con membrete corporativo, tabla de acuerdos y firmas</p>
+              <td style="vertical-align: middle; padding-left: 12px;">
+                <p style="margin: 0; font-size: 12px; font-weight: 800; color: #991b1b;">
+                  📎 Documento Adjunto: ${escapeHtml(cleanFilename)}
+                </p>
+                <p style="margin: 2px 0 0 0; font-size: 10.5px; color: #7f1d1d; line-height: 1.4;">
+                  Acta formal certificada con membrete oficial, transcripción íntegra, acuerdos formalizados y casillas de firma.
+                </p>
               </td>
             </tr>
           </table>
         </div>
 
-        <p style="font-size: 10px; color: #94a3b8; margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-          Emitido por <strong>AIR v1.1 — Asistente Inteligente de Reuniones</strong>.
+        <p style="font-size: 10px; color: #94a3b8; margin-top: 18px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+          Emitido formalmente por el sistema <strong>AIR v1.1 — Asistente Inteligente de Reuniones</strong>.
         </p>
       </div>
     </div>
@@ -2022,7 +2075,10 @@ function generateEmailBodyText(data) {
     ? data.tareas.map(t => `• [${t.id}] ${t.tarea} | Responsable: ${t.responsable} | Plazo: ${t.plazo} | Prioridad: ${t.prioridad}`).join('\n')
     : '• Sin compromisos adicionales.';
 
-  return `Estimados participantes,
+  return `AIR — Asistente Inteligente de Reuniones
+Enviado desde: Despacho Oficial de Minutas y Acuerdos de Sesión
+
+Estimados participantes,
 
 Compartimos la minuta oficial con los temas tratados, acuerdos y tareas formalizadas en la sesión:
 
@@ -2048,7 +2104,7 @@ ${tasksText}
 ==================================================
 📎 DOCUMENTO ADJUNTO:
 ==================================================
-Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf (Acta formal con firmas institucionales)
+Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf (Acta formal con membrete y firmas institucionales)
 
 --------------------------------------------------
 Documento emitido por AIR v1.1 — Asistente Inteligente de Reuniones.
@@ -2059,9 +2115,12 @@ function setupEmailModal() {
   const modal = document.getElementById('modal-send-email');
   const btnClose = document.getElementById('btn-close-email-modal');
   const btnCopyHtml = document.getElementById('btn-copy-email-html');
-  const btnCopyText = document.getElementById('btn-copy-email-text');
   const btnConfirm = document.getElementById('btn-confirm-send-email');
   const btnDownloadPdf = document.getElementById('btn-modal-download-pdf');
+  const btnOpenGmail = document.getElementById('btn-open-gmail-web');
+  const btnToggleSmtp = document.getElementById('btn-toggle-smtp');
+  const btnSaveSmtp = document.getElementById('btn-save-smtp');
+  const smtpPanel = document.getElementById('smtp-config-panel');
   const subjectInput = document.getElementById('email-subject-input');
 
   if (!modal) return;
@@ -2072,12 +2131,33 @@ function setupEmailModal() {
     if (e.target === modal) closeModal();
   });
 
+  if (btnToggleSmtp && smtpPanel) {
+    btnToggleSmtp.addEventListener('click', () => {
+      smtpPanel.classList.toggle('hidden');
+    });
+  }
+
+  if (btnSaveSmtp) {
+    btnSaveSmtp.addEventListener('click', () => {
+      const host = document.getElementById('smtp-host-input')?.value.trim();
+      const port = document.getElementById('smtp-port-input')?.value.trim();
+      const user = document.getElementById('smtp-user-input')?.value.trim();
+      const pass = document.getElementById('smtp-pass-input')?.value.trim();
+
+      const config = { host, port, user, pass };
+      localStorage.setItem('air_smtp_config', JSON.stringify(config));
+      showToast("✓ Configuración SMTP guardada localmente.");
+      if (smtpPanel) smtpPanel.classList.add('hidden');
+    });
+  }
+
   if (btnDownloadPdf) {
     btnDownloadPdf.addEventListener('click', () => {
       exportMeetingToPdf(state.currentMeetingData, true);
     });
   }
 
+  // Copiar correo formateado en HTML para pegar en Gmail/Outlook con logo y tablas
   if (btnCopyHtml) {
     btnCopyHtml.addEventListener('click', async () => {
       const data = state.currentMeetingData || DEMO_MEETING;
@@ -2091,68 +2171,158 @@ function setupEmailModal() {
             'text/plain': new Blob([text], { type: 'text/plain' })
           });
           await navigator.clipboard.write([item]);
-          showToast("✓ ¡Correo con diseño y logo copiado! Pégalo en tu correo.");
+          showToast("✓ ¡Correo con logo y tablas copiado! Pégalo con Ctrl+V.");
           return;
         }
       } catch (err) {}
 
       navigator.clipboard.writeText(text).then(() => {
-        showToast("Texto del correo copiado.");
+        showToast("✓ Texto del correo copiado.");
       });
     });
   }
 
-  if (btnCopyText) {
-    btnCopyText.addEventListener('click', () => {
+  // Redactar en Gmail Web
+  if (btnOpenGmail) {
+    btnOpenGmail.addEventListener('click', async () => {
       const data = state.currentMeetingData || DEMO_MEETING;
-      const text = generateEmailBodyText(data);
-      navigator.clipboard.writeText(text).then(() => {
-        showToast("✓ Texto del correo copiado al portapapeles.");
-      });
+      const attendees = getStoredAttendees();
+      const recipientEmails = attendees.map(a => a.email.trim()).filter(Boolean);
+      const subject = subjectInput ? subjectInput.value : `Minuta: ${data.titulo}`;
+      const toStr = recipientEmails.join(',');
+
+      // Asegurar que el PDF esté ejecutado y descargado
+      if (!state.lastGeneratedPdfBlob) {
+        exportMeetingToPdf(data, true);
+      }
+
+      // Copiar el diseño HTML con logo al portapapeles
+      try {
+        const html = generateEmailHtml(data);
+        const text = generateEmailBodyText(data);
+        if (navigator.clipboard && window.ClipboardItem) {
+          const item = new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([item]);
+        }
+      } catch (_) {}
+
+      showToast("✓ Abriendo Gmail Web. Pega el diseño con Ctrl+V y adjunta el PDF.");
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(toStr)}&su=${encodeURIComponent(subject)}`;
+      window.open(gmailUrl, '_blank');
     });
   }
 
+  // Botón Principal: Despacho oficial de correo con PDF adjunto
   if (btnConfirm) {
     btnConfirm.addEventListener('click', async () => {
       const data = state.currentMeetingData || DEMO_MEETING;
       const attendees = getStoredAttendees();
       const recipientEmails = attendees.map(a => a.email.trim()).filter(Boolean);
-      const subject = subjectInput ? subjectInput.value : `Minuta: ${data.titulo}`;
+      const subject = subjectInput ? subjectInput.value : `Minuta Oficial: ${data.titulo}`;
       const text = generateEmailBodyText(data);
+      const html = generateEmailHtml(data);
       const toStr = recipientEmails.join(',');
 
-      // 1. Si el navegador soporta adjuntar archivos directamente (dispositivos móviles)
-      if (navigator.canShare && state.lastGeneratedPdfBlob) {
+      // 1. Asegurar generación de PDF (Requerimiento: primero en PDF)
+      let pdfBlob = state.lastGeneratedPdfBlob;
+      let pdfFilename = state.lastGeneratedPdfFilename || `Acta_${data.titulo.replace(/[\s\W]+/g, '_')}.pdf`;
+      if (!pdfBlob) {
+        const exported = exportMeetingToPdf(data, true);
+        pdfBlob = exported?.blob || state.lastGeneratedPdfBlob;
+        pdfFilename = exported?.filename || pdfFilename;
+      }
+
+      const btnLabel = document.getElementById('btn-confirm-send-email-label');
+      if (btnLabel) btnLabel.textContent = "Despachando...";
+      btnConfirm.disabled = true;
+
+      try {
+        // 2. Intentar despacho directo vía servidor local / API
+        if (pdfBlob) {
+          const base64Data = await blobToBase64(pdfBlob);
+          const smtpConfig = getStoredSmtpConfig();
+
+          const resp = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: recipientEmails.length > 0 ? recipientEmails : ['asistentes@empresa.com'],
+              subject: subject,
+              html: html,
+              text: text,
+              pdfBase64: base64Data,
+              pdfFilename: pdfFilename,
+              smtp: smtpConfig
+            })
+          });
+
+          if (resp.ok) {
+            const resJson = await resp.json();
+            if (resJson.success) {
+              if (resJson.isTest && resJson.testPreviewUrl) {
+                showToast("✓ ¡Correo despachado con PDF adjunto! Abriendo reporte...");
+                window.open(resJson.testPreviewUrl, '_blank');
+              } else {
+                showToast("✓ ¡Minuta enviada con el PDF adjunto a todos los correos!");
+              }
+              if (btnLabel) btnLabel.textContent = "✓ Minuta Despachada";
+              btnConfirm.disabled = false;
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        // Servidor no disponible o modo estático (GitHub Pages)
+      }
+
+      // 3. Si estamos en móvil o navegador compatible con Web Share (adjunta el PDF nativamente)
+      if (navigator.canShare && pdfBlob) {
         try {
-          const pdfFile = new File([state.lastGeneratedPdfBlob], state.lastGeneratedPdfFilename || 'Acta_Minuta.pdf', { type: 'application/pdf' });
+          const pdfFile = new File([pdfBlob], pdfFilename, { type: 'application/pdf' });
           if (navigator.canShare({ files: [pdfFile] })) {
             await navigator.share({
               title: subject,
-              text: `Estimados participantes:\n\nAdjuntamos el acta oficial en PDF de la sesión "${data.titulo}".\n\n${data.resumenEjecutivo}`,
+              text: text,
               files: [pdfFile]
             });
             showToast("✓ Compartido con el archivo PDF adjunto.");
+            if (btnLabel) btnLabel.textContent = "Enviar Minuta Ahora";
+            btnConfirm.disabled = false;
             return;
           }
         } catch (e) {
-          if (e.name === 'AbortError') return;
+          if (e.name === 'AbortError') {
+            if (btnLabel) btnLabel.textContent = "Enviar Minuta Ahora";
+            btnConfirm.disabled = false;
+            return;
+          }
         }
       }
 
-      // 2. En computadoras: asegurar que el PDF esté en Descargas y abrir mailto:
-      if (!state.lastGeneratedPdfBlob) {
-        exportMeetingToPdf(data, true);
-      }
-      
+      // 4. Fallback estándar para PC: descargar PDF, copiar correo con logo y abrir cliente de correo
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          const item = new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([item]);
+        }
+      } catch (_) {}
+
+      showToast("✓ PDF descargado y correo con logo copiado. Abriendo gestor...");
       const mailtoUrl = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
       if (mailtoUrl.length > 1900) {
-        navigator.clipboard.writeText(text);
-        showToast("El cuerpo es extenso: se copió al portapapeles y se descargó el PDF.");
         window.location.href = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}`;
       } else {
-        showToast("✓ Abriendo cliente de correo. Adjunta el archivo PDF descargado.");
         window.location.href = mailtoUrl;
       }
+
+      if (btnLabel) btnLabel.textContent = "Enviar Minuta Ahora";
+      btnConfirm.disabled = false;
     });
   }
 }
