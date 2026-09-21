@@ -1579,7 +1579,9 @@ function exportMeetingToPdf(customData) {
 
 function getRegistrationUrl() {
   const loc = window.location;
-  if (loc.protocol === 'file:') {
+  // Si estamos en localhost o file://, el QR debe apuntar a la URL pública de producción
+  // para que cualquier teléfono celular pueda escanearlo y abrirlo por internet
+  if (loc.hostname === 'localhost' || loc.hostname === '127.0.0.1' || loc.protocol === 'file:') {
     return 'https://luis28lh.github.io/asistente-reuniones/registro.html';
   }
   const basePath = loc.pathname.substring(0, loc.pathname.lastIndexOf('/') + 1);
@@ -1760,11 +1762,61 @@ function setupAttendanceModule() {
     } catch (e) {}
   }
 
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'air_registered_attendees') {
-      renderAttendeesList();
-    }
-  });
+  // Escuchar en tiempo real vía Server-Sent Events (SSE) desde teléfonos móviles por Internet
+  try {
+    const sse = new EventSource('https://ntfy.sh/air_attendees_luis28lh/sse');
+    sse.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.event === 'message' && payload.message) {
+          const attendee = JSON.parse(payload.message);
+          if (attendee && attendee.nombre && attendee.email) {
+            const currentList = getStoredAttendees();
+            const exists = currentList.some(a => a.email.toLowerCase() === attendee.email.toLowerCase());
+            if (!exists) {
+              currentList.push(attendee);
+              saveStoredAttendees(currentList);
+              renderAttendeesList();
+              showToast(`📱 ¡${attendee.nombre} confirmó su asistencia desde el celular!`);
+            }
+          }
+        }
+      } catch (err) {}
+    };
+  } catch (err) {}
+
+  // Consulta periódica preventiva cada 5s por si el dispositivo móvil usó red móvil restrictiva
+  setInterval(async () => {
+    try {
+      const res = await fetch('https://ntfy.sh/air_attendees_luis28lh/json?poll=1');
+      if (!res.ok) return;
+      const text = await res.text();
+      const lines = text.trim().split('\n');
+      let changed = false;
+      const currentList = getStoredAttendees();
+
+      lines.forEach(line => {
+        try {
+          const item = JSON.parse(line);
+          if (item.event === 'message' && item.message) {
+            const attendee = JSON.parse(item.message);
+            if (attendee && attendee.nombre && attendee.email) {
+              const exists = currentList.some(a => a.email.toLowerCase() === attendee.email.toLowerCase());
+              if (!exists) {
+                currentList.push(attendee);
+                changed = true;
+              }
+            }
+          }
+        } catch (_) {}
+      });
+
+      if (changed) {
+        saveStoredAttendees(currentList);
+        renderAttendeesList();
+      }
+    } catch (_) {}
+  }, 5000);
 
   renderAttendeesList();
 }

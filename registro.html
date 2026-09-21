@@ -146,6 +146,15 @@
           channel.postMessage({ type: 'NEW_ATTENDEE', attendee, allAttendees: list });
         }
         localStorage.setItem('air_attendee_sync_event', JSON.stringify({ timestamp: Date.now(), attendee }));
+
+        // Sincronización en tiempo real multidispositivo (Móvil -> PC por Internet)
+        try {
+          fetch('https://ntfy.sh/air_attendees_luis28lh', {
+            method: 'POST',
+            headers: { 'Title': 'Nuevo Asistente Registrado' },
+            body: JSON.stringify(attendee)
+          }).catch(() => {});
+        } catch (_) {}
       } catch (err) {
         console.warn('Error guardando asistencia localmente:', err);
       }
