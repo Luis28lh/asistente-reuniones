@@ -1,0 +1,5 @@
+node_modules/
+.DS_Store
+Thumbs.db
+minutas_generadas/*.json
+!minutas_generadas/.gitkeep

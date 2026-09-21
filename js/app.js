@@ -98,6 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupChat();
   setupDemoLoader();
   setupHelpModal();
+  setupAttendanceModule();
+  setupEmailModal();
+  setupHistoryModal();
   
   // Inicializar canvas responsive
   resizeCanvas();
@@ -677,13 +680,6 @@ function setupActionButtons() {
     });
   }
 
-  const btnCopyMarkdown = document.getElementById('btn-copy-markdown');
-  if (btnCopyMarkdown) {
-    btnCopyMarkdown.addEventListener('click', () => {
-      copyMeetingAsMarkdown();
-    });
-  }
-
   const btnSendEmail = document.getElementById('btn-send-email');
   if (btnSendEmail) {
     btnSendEmail.addEventListener('click', () => {
@@ -908,7 +904,9 @@ async function autoTranscribeRecordedAudio() {
     return;
   }
 
-  if (transcriptInput) {
+  const priorLiveTranscript = (state.finalTranscript || '').trim() || (transcriptInput ? transcriptInput.value.trim() : '');
+
+  if (transcriptInput && !priorLiveTranscript) {
     transcriptInput.value = "🎙️ Transcribiendo audio con IA (Google Gemini)... Por favor espera unos segundos...";
     updateWordCount("Transcribiendo audio...");
   }
@@ -923,12 +921,12 @@ async function autoTranscribeRecordedAudio() {
     if (statusText) statusText.textContent = "El modelo de IA está escuchando tu voz grabada y transcribiendo en español...";
   }
 
-  try {
-    const meetingTitleInput = document.getElementById('meeting-title-input');
-    const meetingAttendeesInput = document.getElementById('meeting-attendees-input');
-    const userTitle = meetingTitleInput ? meetingTitleInput.value.trim() : '';
-    const userAttendees = meetingAttendeesInput ? meetingAttendeesInput.value.trim() : '';
+  const meetingTitleInput = document.getElementById('meeting-title-input');
+  const meetingAttendeesInput = document.getElementById('meeting-attendees-input');
+  const userTitle = meetingTitleInput ? meetingTitleInput.value.trim() : '';
+  const userAttendees = meetingAttendeesInput ? meetingAttendeesInput.value.trim() : '';
 
+  try {
     const meetingData = await processAudioWithGemini(state.audioBlob, userTitle, userAttendees);
 
     if (transcriptInput && meetingData.transcripcionOriginal) {
@@ -953,14 +951,36 @@ async function autoTranscribeRecordedAudio() {
   } catch (err) {
     console.error("Error al transcribir automáticamente:", err);
     if (processingOverlay) processingOverlay.classList.add('hidden');
-    if (transcriptInput) {
-      transcriptInput.value = "";
-      transcriptInput.placeholder = "No se pudo transcribir con IA (" + err.message + "). Puedes usar el botón 'Dictar por voz' o escribir notas.";
-      updateWordCount("");
-    }
+    
     if (recordStatus) {
       recordStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500 mr-2"></span> Audio listo en el reproductor`;
       recordStatus.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200";
+    }
+
+    // Si disponemos de texto previo capturado en vivo por el micrófono, conservarlo y generar minuta
+    if (priorLiveTranscript && priorLiveTranscript.length > 5 && !priorLiveTranscript.startsWith('🎙️')) {
+      if (transcriptInput) {
+        transcriptInput.value = priorLiveTranscript;
+        updateWordCount(priorLiveTranscript);
+      }
+      try {
+        const fallbackMeeting = analyzeMeetingTranscript(priorLiveTranscript, userTitle, userAttendees);
+        renderMeetingResults(fallbackMeeting);
+        if (resultsContainer) {
+          resultsContainer.classList.remove('hidden');
+          resultsContainer.scrollIntoView({ behavior: 'smooth' });
+        }
+        showToast("Minuta generada a partir del dictado de voz en vivo.");
+        return;
+      } catch (e2) {
+        console.warn("Fallo en fallback de minuta:", e2);
+      }
+    } else {
+      if (transcriptInput) {
+        transcriptInput.value = "";
+        transcriptInput.placeholder = "No se pudo transcribir con IA (" + err.message + "). Puedes usar el botón 'Dictar por voz' o escribir notas.";
+        updateWordCount("");
+      }
     }
     showToast(`Error al transcribir: ${err.message}`, true);
   }
@@ -1251,6 +1271,9 @@ function analyzeMeetingTranscript(text, titleInput, attendeesInput, durationStr)
 // Renderizado de la minuta en la interfaz con estética en grises neutros
 function renderMeetingResults(data) {
   state.currentMeetingData = data;
+  if (typeof saveMinuteToHistory === 'function') {
+    saveMinuteToHistory(data);
+  }
 
   // Encabezados
   const titleEl = document.getElementById('result-title');
@@ -1427,8 +1450,8 @@ function generateChatAnswer(q) {
 }
 
 // Exportación formal a PDF (Paleta neutra con tabla jsPDF)
-function exportMeetingToPdf() {
-  const data = state.currentMeetingData || DEMO_MEETING;
+function exportMeetingToPdf(customData) {
+  const data = customData || state.currentMeetingData || DEMO_MEETING;
 
   if (typeof window.jspdf === 'undefined') {
     showToast("Librería PDF cargando, intenta en un momento.", true);
@@ -1550,47 +1573,532 @@ function exportMeetingToPdf() {
   showToast("Acta descargada en formato PDF formal.");
 }
 
-// Copiar Markdown
-function copyMeetingAsMarkdown() {
-  const data = state.currentMeetingData || DEMO_MEETING;
-  const md = `# ${data.titulo}
-**Fecha:** ${data.fechaHora}  
-**Duración:** ${data.duracion}  
-**Participantes:** ${data.participantes.join(', ')}
+// ==========================================
+// MÓDULO 1: PORTAL DE ASISTENCIA Y CÓDIGO QR
+// ==========================================
 
----
-
-## Resumen Ejecutivo
-${data.resumenEjecutivo}
-
----
-
-## Acuerdos y Decisiones
-${data.acuerdos.map(a => `- **[${a.id}]**: ${a.descripcion} *(Impacto: ${a.impacto})*`).join('\n')}
-
----
-
-## Matriz de Compromisos (Action Items)
-| Código | Tarea | Responsable | Fecha Límite | Prioridad | Estado |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-${data.tareas.map(t => `| ${t.id} | ${t.tarea} | ${t.responsable} | ${t.plazo} | ${t.prioridad} | ${t.completada ? 'Completado' : 'Pendiente'} |`).join('\n')}
-
----
-*Generado automáticamente por AIR (Asistente Inteligente de Reuniones)*
-`;
-
-  navigator.clipboard.writeText(md).then(() => {
-    showToast("Minuta copiada al portapapeles en formato Markdown.");
-  }).catch(() => {
-    showToast("No se pudo copiar automáticamente.", true);
-  });
+function getRegistrationUrl() {
+  const loc = window.location;
+  if (loc.protocol === 'file:') {
+    return 'https://luis28lh.github.io/asistente-reuniones/registro.html';
+  }
+  const basePath = loc.pathname.substring(0, loc.pathname.lastIndexOf('/') + 1);
+  return `${loc.origin}${basePath}registro.html`;
 }
+
+function getStoredAttendees() {
+  try {
+    const raw = localStorage.getItem('air_registered_attendees');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveStoredAttendees(list) {
+  try {
+    localStorage.setItem('air_registered_attendees', JSON.stringify(list));
+  } catch (e) {
+    console.warn("Error guardando asistentes en localStorage", e);
+  }
+}
+
+function renderAttendeesList() {
+  const attendees = getStoredAttendees();
+  const listEl = document.getElementById('live-attendees-list');
+  const countBadge = document.getElementById('registered-count-badge');
+  const emailCount = document.getElementById('email-recipients-count');
+  const attendeesInput = document.getElementById('meeting-attendees-input');
+
+  if (countBadge) {
+    countBadge.textContent = `${attendees.length} registrado${attendees.length === 1 ? '' : 's'}`;
+  }
+  if (emailCount) {
+    emailCount.textContent = attendees.length;
+  }
+
+  if (listEl) {
+    if (attendees.length === 0) {
+      listEl.innerHTML = '<p class="text-[11px] text-slate-400 italic">No hay participantes registrados aún. Escanea el QR o agrégalos con el botón.</p>';
+    } else {
+      listEl.innerHTML = attendees.map((a, idx) => `
+        <span class="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-medium group">
+          <span class="font-semibold mr-1">${escapeHtml(a.nombre)}</span>
+          <span class="text-slate-500 font-mono text-[10px] mr-1.5">&lt;${escapeHtml(a.email)}&gt;</span>
+          ${a.cargo ? `<span class="text-slate-400 text-[10px] mr-1.5">(${escapeHtml(a.cargo)})</span>` : ''}
+          <button type="button" onclick="removeAttendee(${idx})" class="text-slate-400 hover:text-red-600 transition ml-0.5" title="Eliminar">&times;</button>
+        </span>
+      `).join('');
+    }
+  }
+
+  // Sincronizar automáticamente la casilla de participantes convocados si el usuario no escribió manualmente
+  if (attendeesInput && attendees.length > 0) {
+    const names = attendees.map(a => a.cargo ? `${a.nombre} (${a.cargo})` : a.nombre).join(', ');
+    if (!attendeesInput.dataset.manualEdit) {
+      attendeesInput.value = names;
+    }
+  }
+}
+
+window.removeAttendee = function(idx) {
+  const attendees = getStoredAttendees();
+  if (attendees[idx]) {
+    const removed = attendees.splice(idx, 1);
+    saveStoredAttendees(attendees);
+    renderAttendeesList();
+    showToast(`Participante "${removed[0]?.nombre}" eliminado.`);
+  }
+};
+
+function setupAttendanceModule() {
+  const regUrl = getRegistrationUrl();
+  const qrImg = document.getElementById('qr-code-img');
+  const linkOpen = document.getElementById('link-open-registration');
+  const btnCopy = document.getElementById('btn-copy-reg-link');
+  const btnClear = document.getElementById('btn-clear-attendees');
+  const btnManual = document.getElementById('btn-manual-attendee');
+  const modalManual = document.getElementById('modal-manual-attendee');
+  const btnCloseManual = document.getElementById('btn-close-manual-attendee');
+  const btnCancelManual = document.getElementById('btn-cancel-manual-attendee');
+  const formManual = document.getElementById('form-manual-attendee');
+  const attendeesInput = document.getElementById('meeting-attendees-input');
+
+  if (attendeesInput) {
+    attendeesInput.addEventListener('input', () => {
+      attendeesInput.dataset.manualEdit = 'true';
+    });
+  }
+
+  if (qrImg) {
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(regUrl)}&margin=4`;
+  }
+  if (linkOpen) {
+    linkOpen.href = regUrl;
+  }
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      navigator.clipboard.writeText(regUrl).then(() => {
+        showToast("Enlace del portal copiado al portapapeles.");
+      }).catch(() => {
+        prompt("Copia este enlace:", regUrl);
+      });
+    });
+  }
+
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      if (confirm("¿Estás seguro de limpiar la lista de participantes registrados?")) {
+        localStorage.removeItem('air_registered_attendees');
+        renderAttendeesList();
+        showToast("Lista de participantes vaciada.");
+      }
+    });
+  }
+
+  // Modal manual
+  if (btnManual && modalManual) {
+    btnManual.addEventListener('click', () => {
+      modalManual.classList.remove('hidden');
+      const nameInput = document.getElementById('manual-name-input');
+      if (nameInput) nameInput.focus();
+    });
+
+    const closeManual = () => modalManual.classList.add('hidden');
+    if (btnCloseManual) btnCloseManual.addEventListener('click', closeManual);
+    if (btnCancelManual) btnCancelManual.addEventListener('click', closeManual);
+    modalManual.addEventListener('click', (e) => {
+      if (e.target === modalManual) closeManual();
+    });
+
+    if (formManual) {
+      formManual.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = document.getElementById('manual-name-input')?.value.trim();
+        const email = document.getElementById('manual-email-input')?.value.trim();
+        const role = document.getElementById('manual-role-input')?.value.trim();
+
+        if (!name || !email) return;
+
+        const attendees = getStoredAttendees();
+        const newEntry = {
+          id: 'att_' + Date.now(),
+          nombre: name,
+          email: email,
+          cargo: role || '',
+          fecha: new Date().toISOString()
+        };
+        attendees.push(newEntry);
+        saveStoredAttendees(attendees);
+
+        if (typeof BroadcastChannel !== 'undefined') {
+          try {
+            const bc = new BroadcastChannel('air_meeting_channel');
+            bc.postMessage({ type: 'NEW_ATTENDEE', data: newEntry });
+            bc.close();
+          } catch (err) {}
+        }
+
+        formManual.reset();
+        closeManual();
+        renderAttendeesList();
+        showToast(`✓ Asistente "${name}" registrado correctamente.`);
+      });
+    }
+  }
+
+  // Escuchar registros en tiempo real desde registro.html (BroadcastChannel y Storage)
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const channel = new BroadcastChannel('air_meeting_channel');
+      channel.onmessage = (event) => {
+        if (event.data && event.data.type === 'NEW_ATTENDEE') {
+          renderAttendeesList();
+          showToast(`¡Nuevo asistente registrado vía QR: ${event.data.data?.nombre || ''}!`);
+        }
+      };
+    } catch (e) {}
+  }
+
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'air_registered_attendees') {
+      renderAttendeesList();
+    }
+  });
+
+  renderAttendeesList();
+}
+
+// ==========================================
+// MÓDULO 2: DESPACHO DE MINUTAS POR CORREO
+// ==========================================
 
 function openEmailDistributionModal() {
   const data = state.currentMeetingData || DEMO_MEETING;
-  const subject = encodeURIComponent(`Minuta Oficial: ${data.titulo}`);
-  const body = encodeURIComponent(`Estimados participantes:\n\nCompartimos la minuta de la reunión "${data.titulo}" realizada el ${data.fechaHora}.\n\nRESUMEN EJECUTIVO:\n${data.resumenEjecutivo}\n\nPueden consultar sus tareas asignadas y dar seguimiento a los acuerdos formalizados.\n\nAtentamente,\nAIR Asistente de Reunión`);
-  window.open(`mailto:?subject=${subject}&body=${body}`);
+  const modal = document.getElementById('modal-send-email');
+  if (!modal) return;
+
+  const attendees = getStoredAttendees();
+  const recipientEmails = attendees.map(a => a.email.trim()).filter(Boolean);
+
+  const listEl = document.getElementById('email-recipients-list');
+  const subjectInput = document.getElementById('email-subject-input');
+  const bodyPreview = document.getElementById('email-body-preview');
+  const emailCountBadge = document.getElementById('email-recipients-count');
+
+  if (emailCountBadge) emailCountBadge.textContent = recipientEmails.length;
+
+  if (listEl) {
+    if (recipientEmails.length === 0) {
+      listEl.innerHTML = `<span class="text-amber-700 italic">No hay correos registrados vía QR. Puedes agregarlos desde el botón "+ Agregar Manual" en la sección de participantes.</span>`;
+    } else {
+      listEl.innerHTML = attendees.map(a => `
+        <span class="inline-block bg-white border border-slate-200 rounded px-2 py-0.5 mr-1.5 mb-1 text-[11px]">
+          <strong>${escapeHtml(a.nombre)}</strong> &lt;${escapeHtml(a.email)}&gt;
+        </span>
+      `).join('');
+    }
+  }
+
+  const subject = `Minuta Oficial de Sesión: ${data.titulo}`;
+  if (subjectInput) subjectInput.value = subject;
+
+  const formattedBody = generateEmailBodyText(data);
+  if (bodyPreview) bodyPreview.value = formattedBody;
+
+  modal.classList.remove('hidden');
+}
+
+function generateEmailBodyText(data) {
+  const agreementsText = data.acuerdos && data.acuerdos.length > 0
+    ? data.acuerdos.map(a => `• [${a.id}] ${a.descripcion} (Impacto: ${a.impacto})`).join('\n')
+    : '• Sin acuerdos específicos formalizados.';
+
+  const tasksText = data.tareas && data.tareas.length > 0
+    ? data.tareas.map(t => `• [${t.id}] ${t.tarea} | Responsable: ${t.responsable} | Plazo: ${t.plazo} | Prioridad: ${t.prioridad}`).join('\n')
+    : '• Sin compromisos adicionales.';
+
+  return `Estimados participantes,
+
+Adjuntamos la minuta oficial de la sesión:
+
+SESIÓN: ${data.titulo}
+FECHA Y DURACIÓN: ${data.fechaHora} · ${data.duracion}
+PARTICIPANTES: ${data.participantes ? data.participantes.join(', ') : 'Asistentes convocados'}
+
+==================================================
+RESUMEN EJECUTIVO:
+==================================================
+${data.resumenEjecutivo}
+
+==================================================
+ACUERDOS Y RESOLUCIONES:
+==================================================
+${agreementsText}
+
+==================================================
+MATRIZ DE COMPROMISOS (ACTION ITEMS):
+==================================================
+${tasksText}
+
+--------------------------------------------------
+Documento emitido por AIR v1.1 — Asistente Inteligente de Reuniones.
+`;
+}
+
+function setupEmailModal() {
+  const modal = document.getElementById('modal-send-email');
+  const btnClose = document.getElementById('btn-close-email-modal');
+  const btnCopy = document.getElementById('btn-copy-email-text');
+  const btnConfirm = document.getElementById('btn-confirm-send-email');
+  const bodyPreview = document.getElementById('email-body-preview');
+  const subjectInput = document.getElementById('email-subject-input');
+
+  if (!modal) return;
+
+  const closeModal = () => modal.classList.add('hidden');
+  if (btnClose) btnClose.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      const text = bodyPreview ? bodyPreview.value : '';
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("✓ Texto del correo copiado al portapapeles.");
+      }).catch(() => {
+        showToast("No se pudo copiar el texto.", true);
+      });
+    });
+  }
+
+  if (btnConfirm) {
+    btnConfirm.addEventListener('click', () => {
+      const attendees = getStoredAttendees();
+      const recipientEmails = attendees.map(a => a.email.trim()).filter(Boolean);
+      const subject = subjectInput ? subjectInput.value : 'Minuta de Reunión';
+      const body = bodyPreview ? bodyPreview.value : '';
+
+      const toStr = recipientEmails.join(',');
+      const mailtoUrl = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      
+      if (mailtoUrl.length > 1900) {
+        navigator.clipboard.writeText(body).then(() => {
+          showToast("El cuerpo es extenso: se copió al portapapeles y se abrió tu gestor de correo.");
+        });
+        const shortMailto = `mailto:${encodeURIComponent(toStr)}?subject=${encodeURIComponent(subject)}`;
+        window.location.href = shortMailto;
+      } else {
+        window.location.href = mailtoUrl;
+      }
+    });
+  }
+}
+
+// ==========================================
+// MÓDULO 3: REPOSITORIO Y ARCHIVADO DE MINUTAS
+// ==========================================
+
+function getSavedMinutes() {
+  try {
+    const raw = localStorage.getItem('air_saved_minutes');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function setSavedMinutes(list) {
+  try {
+    localStorage.setItem('air_saved_minutes', JSON.stringify(list));
+  } catch (e) {}
+}
+
+async function saveMinuteToHistory(data) {
+  if (!data || !data.titulo) return;
+
+  const minuteItem = {
+    id: data.id || ('minuta_' + Date.now()),
+    titulo: data.titulo,
+    fechaHora: data.fechaHora,
+    duracion: data.duracion,
+    participantes: data.participantes || [],
+    resumenEjecutivo: data.resumenEjecutivo || '',
+    temasTratados: data.temasTratados || [],
+    acuerdos: data.acuerdos || [],
+    tareas: data.tareas || [],
+    transcripcionOriginal: data.transcripcionOriginal || '',
+    createdAt: new Date().toISOString()
+  };
+
+  // 1. Guardar en localStorage
+  const list = getSavedMinutes();
+  const existingIdx = list.findIndex(m => m.titulo === minuteItem.titulo && m.fechaHora === minuteItem.fechaHora);
+  if (existingIdx >= 0) {
+    list[existingIdx] = minuteItem;
+  } else {
+    list.unshift(minuteItem);
+  }
+  setSavedMinutes(list.slice(0, 50));
+
+  updateHistoryBadge();
+
+  // 2. Guardar físicamente en carpeta minutas_generadas/ vía servidor Node si está activo
+  try {
+    fetch('/api/minutas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(minuteItem)
+    }).then(res => {
+      if (res.ok) {
+        console.log("Minuta archivada en servidor local (minutas_generadas/)");
+      }
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+function updateHistoryBadge() {
+  const badge = document.getElementById('history-count-badge');
+  const list = getSavedMinutes();
+  if (badge) {
+    badge.textContent = `${list.length} archivo${list.length === 1 ? '' : 's'}`;
+  }
+}
+
+function setupHistoryModal() {
+  const modal = document.getElementById('modal-history');
+  const btnOpen = document.getElementById('btn-open-history');
+  const btnClose = document.getElementById('btn-close-history');
+  const btnClear = document.getElementById('btn-clear-history');
+
+  if (!modal) return;
+
+  const openModal = async () => {
+    modal.classList.remove('hidden');
+    renderHistoryItems();
+    try {
+      const res = await fetch('/api/minutas');
+      if (res.ok) {
+        const serverMinutes = await res.json();
+        if (Array.isArray(serverMinutes) && serverMinutes.length > 0) {
+          const local = getSavedMinutes();
+          const mergedMap = new Map();
+          local.forEach(m => mergedMap.set(m.id || m.fechaHora, m));
+          serverMinutes.forEach(m => mergedMap.set(m.id || m.fechaHora, m));
+          const merged = Array.from(mergedMap.values());
+          setSavedMinutes(merged);
+          renderHistoryItems();
+        }
+      }
+    } catch (e) {}
+  };
+
+  const closeModal = () => modal.classList.add('hidden');
+
+  if (btnOpen) btnOpen.addEventListener('click', openModal);
+  if (btnClose) btnClose.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      if (confirm("¿Deseas vaciar el repositorio de minutas guardadas?")) {
+        localStorage.removeItem('air_saved_minutes');
+        renderHistoryItems();
+        showToast("Repositorio de minutas vaciado.");
+      }
+    });
+  }
+
+  updateHistoryBadge();
+}
+
+function renderHistoryItems() {
+  const itemsContainer = document.getElementById('history-items-container');
+  if (!itemsContainer) return;
+
+  const list = getSavedMinutes();
+  updateHistoryBadge();
+
+  if (list.length === 0) {
+    itemsContainer.innerHTML = '<p class="text-xs text-slate-400 italic text-center py-8">No se han generado minutas en esta sesión todavía.<br><span class="text-[11px] text-slate-400">Genera una minuta para que se almacene automáticamente en el repositorio.</span></p>';
+    return;
+  }
+
+  itemsContainer.innerHTML = list.map((item, idx) => `
+    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-slate-300 transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div class="space-y-1 min-w-0">
+        <div class="flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.titulo)}</h4>
+        </div>
+        <p class="text-[11px] text-slate-500 font-mono">${escapeHtml(item.fechaHora || '')} · ${escapeHtml(item.duracion || '')}</p>
+        <div class="flex items-center space-x-2 text-[10px] text-slate-500">
+          <span>${item.acuerdos?.length || 0} acuerdos</span>
+          <span>&bull;</span>
+          <span>${item.tareas?.length || 0} compromisos</span>
+          <span>&bull;</span>
+          <span>${item.participantes?.length || 0} participantes</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-1.5 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+        <button onclick="loadSavedMinute(${idx})" class="py-1.5 px-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded text-[11px] font-medium transition cursor-pointer shadow-2xs">
+          Cargar
+        </button>
+        <button onclick="exportSavedMinutePdf(${idx})" class="py-1.5 px-2.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded text-[11px] font-medium transition cursor-pointer shadow-2xs">
+          PDF
+        </button>
+        <button onclick="deleteSavedMinute(${idx})" class="py-1.5 px-2 text-slate-400 hover:text-red-600 rounded text-[11px] transition cursor-pointer" title="Eliminar">&times;</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+window.loadSavedMinute = function(idx) {
+  const list = getSavedMinutes();
+  const item = list[idx];
+  if (!item) return;
+
+  renderMeetingResults(item);
+  const modal = document.getElementById('modal-history');
+  if (modal) modal.classList.add('hidden');
+
+  const resultsContainer = document.getElementById('results-container');
+  if (resultsContainer) {
+    resultsContainer.classList.remove('hidden');
+    resultsContainer.scrollIntoView({ behavior: 'smooth' });
+  }
+  showToast(`Minuta "${item.titulo}" cargada en pantalla.`);
+};
+
+window.exportSavedMinutePdf = function(idx) {
+  const list = getSavedMinutes();
+  const item = list[idx];
+  if (!item) return;
+  exportMeetingToPdf(item);
+};
+
+window.deleteSavedMinute = function(idx) {
+  const list = getSavedMinutes();
+  if (list[idx]) {
+    list.splice(idx, 1);
+    setSavedMinutes(list);
+    renderHistoryItems();
+    showToast(`Minuta eliminada del historial.`);
+  }
+};
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // Cargar demostración rápida (Benchmark Nova Caribe)

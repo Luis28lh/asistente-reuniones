@@ -29,19 +29,52 @@
               400: '#94a3b8',
               500: '#64748b',
               600: '#475569',
-              700: '#334155',
-              800: '#1e293b',
-              900: '#0f172a'
-            }
-          }
-        }
-      }
-    }
-  </script>
-</head>
-<body class="min-h-full flex flex-col text-slate-800 antialiased bg-slate-50">
+  <!-- Fuentes e Íconos Neutros Modernos -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-  <!-- BARRA DE NAVEGACIÓN SUPERIOR (SOBRIA Y EJECUTIVA) -->
+  <style>
+    /* Tipografía Corporativa y Suavizado Suizo */
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Estilos neutros del área de arrastrar archivo */
+    .dropzone-active {
+      border-color: #0f172a !important;
+      background-color: #f8fafc !important;
+    }
+    /* Animación sutil de pulso para la grabación activa */
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.85; transform: scale(1.02); }
+    }
+    .recording-active {
+      animation: pulse-subtle 2s infinite ease-in-out;
+    }
+    /* Scrollbar minimalista y limpio */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="min-h-full flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-slate-200 selection:text-slate-900">
+
+  <!-- BARRA SUPERIOR: ENCABEZADO INSTITUCIONAL -->
   <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
     <div class="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
       
@@ -52,7 +85,7 @@
         <div class="min-w-0">
           <div class="flex items-center space-x-1.5 sm:space-x-2">
             <span class="text-sm font-bold tracking-tight text-slate-900">AIR</span>
-            <span class="text-[10px] sm:text-xs text-slate-400 font-mono">v1.0</span>
+            <span class="text-[10px] sm:text-xs text-slate-500 font-mono font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">v1.1</span>
             <span class="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
               Asistente
             </span>
@@ -63,6 +96,12 @@
 
       <!-- Estado y Acciones Rápidas -->
       <div class="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
+        <!-- BOTÓN DE HISTORIAL Y REPOSITORIO DE MINUTAS -->
+        <button id="btn-open-history" class="text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 transition shadow-2xs flex items-center space-x-1.5 cursor-pointer min-h-[36px]">
+          <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+          <span class="hidden sm:inline">Historial</span>
+        </button>
+
         <!-- BOTÓN DE AYUDA Y TUTORIAL -->
         <button id="btn-open-help" class="text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 transition shadow-2xs flex items-center space-x-1.5 cursor-pointer min-h-[36px]">
           <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-900 text-white text-[10px] font-bold shrink-0">?</span>
@@ -117,10 +156,61 @@
         <div>
           <label class="block text-xs font-medium text-slate-700 mb-1">Modelo de IA / Motor</label>
           <select class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 focus:bg-white text-slate-900 cursor-pointer">
-            <option>Google Gemini 2.0 Flash (Audio Multimodal)</option>
-            <option>Google Gemini 1.5 Pro (Alta Precisión)</option>
+            <option>Google Gemini 3.6 Flash (Audio Multimodal)</option>
+            <option>Google Gemini 3.5 Flash (Alta Disponibilidad)</option>
             <option>Whisper Speech-to-Text + Gemini LLM</option>
           </select>
+        </div>
+      </div>
+
+      <!-- MÓDULO DE ASISTENCIA Y REGISTRO QR DE PARTICIPANTES -->
+      <div class="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="text-xs font-bold text-slate-900">Portal de Asistencia y Registro QR</span>
+            <span id="registered-count-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+              0 registrados
+            </span>
+          </div>
+          <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+            <a id="link-open-registration" href="registro.html" target="_blank" class="text-[11px] px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-800 rounded border border-slate-300 font-medium transition inline-flex items-center shadow-2xs">
+              <span>Abrir Portal</span>
+              <svg class="w-3 h-3 ml-1 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+            <button type="button" id="btn-copy-reg-link" class="text-[11px] px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded border border-slate-300 font-medium transition cursor-pointer shadow-2xs">
+              Copiar Enlace
+            </button>
+            <button type="button" id="btn-manual-attendee" class="text-[11px] px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded font-medium transition cursor-pointer shadow-2xs">
+              + Agregar Manual
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center pt-1">
+          <!-- Código QR Escaneable -->
+          <div class="md:col-span-5 flex items-center space-x-3 bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+            <img id="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https%3A%2F%2Fluis28lh.github.io%2Fasistente-reuniones%2Fregistro.html" alt="Código QR Asistencia" class="w-20 h-20 rounded bg-slate-100 object-contain shrink-0 border border-slate-100">
+            <div class="text-[11px] space-y-1">
+              <p class="font-semibold text-slate-800 flex items-center">
+                <span>📱 Escanear con el móvil</span>
+              </p>
+              <p class="text-slate-500 leading-tight text-[10px]">
+                Los asistentes escanean este QR para registrar su nombre y correo, y recibirán la minuta al concluir.
+              </p>
+            </div>
+          </div>
+
+          <!-- Lista de Asistentes Convocados en Vivo -->
+          <div class="md:col-span-7 bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+            <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100">
+              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lista Oficial de Asistentes</span>
+              <button type="button" id="btn-clear-attendees" class="text-[10px] text-red-500 hover:underline cursor-pointer">Limpiar Lista</button>
+            </div>
+            <div id="live-attendees-list" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              <p class="text-[11px] text-slate-400 italic">No hay participantes registrados aún. Escanea el QR o agrégalos con el botón.</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -252,11 +342,11 @@
         </div>
       </div>
 
-      <!-- Disparador de Procesamiento IA -->
+      <!-- Disparador de Procesamiento -->
       <div class="mt-6 pt-5 border-t border-slate-100">
-        <button id="btn-process-ai" class="w-full py-3 px-6 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs uppercase tracking-wider rounded-lg shadow-xs flex items-center justify-center transition cursor-pointer">
-          <svg class="w-4 h-4 mr-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          <span>Generar Minuta y Acuerdos con IA</span>
+        <button id="btn-process-ai" class="w-full py-3 px-6 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs uppercase tracking-wider rounded-lg shadow-xs flex items-center justify-center transition cursor-pointer">
+          <svg class="w-4 h-4 mr-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span>Generación de Minuta</span>
         </button>
       </div>
 
@@ -268,7 +358,7 @@
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
       </div>
       <div>
-        <h3 class="text-sm font-semibold text-slate-900">Procesando audio de la sesión con IA</h3>
+        <h3 class="text-sm font-semibold text-slate-900">Procesando audio y redactando minuta ejecutiva</h3>
         <p id="processing-step-text" class="text-xs text-slate-500 mt-1">Limpieza acústica y normalización de frecuencias...</p>
       </div>
     </div>
@@ -286,19 +376,14 @@
         </div>
 
         <div class="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
-          <button id="btn-export-pdf" class="py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-medium flex items-center justify-center space-x-1.5 shadow-2xs transition min-h-[36px] cursor-pointer">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <button id="btn-export-pdf" class="py-2 px-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-medium flex items-center justify-center space-x-1.5 shadow-2xs transition min-h-[36px] cursor-pointer">
+            <svg class="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             <span>Descargar PDF Formal</span>
           </button>
 
-          <button id="btn-copy-markdown" class="py-2 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-md text-xs font-medium flex items-center justify-center space-x-1.5 shadow-2xs transition min-h-[36px] cursor-pointer">
-            <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-            <span>Copiar Markdown</span>
-          </button>
-
-          <button id="btn-send-email" class="py-2 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-md text-xs font-medium flex items-center justify-center space-x-1.5 shadow-2xs transition min-h-[36px] cursor-pointer">
-            <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-            <span>Enviar por Correo</span>
+          <button id="btn-send-email" class="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-medium flex items-center justify-center space-x-1.5 shadow-2xs transition min-h-[36px] cursor-pointer">
+            <svg class="w-3.5 h-3.5 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            <span>Enviar Minuta a Participantes (<span id="email-recipients-count">0</span>)</span>
           </button>
         </div>
       </div>
@@ -472,9 +557,9 @@
           <div>
             <h4 class="text-xs font-bold text-slate-900">¿Cómo funciona el sistema en 3 pasos sencillos?</h4>
             <p class="text-xs text-slate-600 mt-1 leading-relaxed">
-              <strong>1.</strong> Llenas el título y participantes. &bull; 
+              <strong>1.</strong> Llenas el título y los participantes escanean el QR para registrar su asistencia y correo. &bull; 
               <strong>2.</strong> Presionas grabar o subes un audio. &bull; 
-              <strong>3.</strong> Haces clic en <em>"Generar Minuta y Acuerdos con IA"</em> y obtendrás el resumen, acuerdos, tareas y PDF al instante.
+              <strong>3.</strong> Haces clic en <em>"Generación de Minuta"</em> y obtendrás el resumen, acuerdos, tareas, PDF formal y envío directo por correo a los participantes.
             </p>
           </div>
         </div>
@@ -497,10 +582,9 @@
           <div class="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition">
             <div class="flex items-center space-x-2 mb-1.5">
               <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold flex items-center justify-center border border-slate-200">2</span>
-              <h5 class="text-xs font-bold text-slate-900">Casilla: "Participantes Convocados"</h5>
+              <h5 class="text-xs font-bold text-slate-900">Casilla: "Portal de Asistencia QR y Participantes"</h5>
             </div>
-            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Registra a las personas presentes. La inteligencia artificial utiliza estos nombres exactos para asignar los compromisos y tareas acordadas durante la sesión.</p>
-            <p class="text-xs text-slate-500 mt-1 bg-slate-50 p-2 rounded-md font-mono"><strong>Cómo se llena:</strong> Escribe los nombres separados por comas. Ej: <em>"Elena Morales (Operaciones), Carlos Mendoza (Seguridad), Ing. Marcos Valerio"</em>.</p>
+            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Muestra un código QR escaneable para que los presentes registren su nombre y correo. La aplicación los agrega automáticamente y habilita el botón para enviarles la minuta terminada a sus correos.</p>
           </div>
 
           <!-- Casilla 3 -->
@@ -509,7 +593,7 @@
               <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold flex items-center justify-center border border-slate-200">3</span>
               <h5 class="text-xs font-bold text-slate-900">Casilla: "Modelo de IA / Motor"</h5>
             </div>
-            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Es el motor inteligente que procesa el sonido. Viene seleccionado automáticamente con <em>Google Gemini 2.0 Flash</em>, que entiende audio directo, tonos y acentos a gran velocidad. No necesitas cambiarlo a menos que tengas un requerimiento técnico específico.</p>
+            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Es el motor inteligente que procesa el sonido. Viene seleccionado con <em>Google Gemini 3.6 Flash</em>, que transcribe audio y estructura actas ejecutivas.</p>
           </div>
 
           <!-- Espacio 4 -->
@@ -519,11 +603,6 @@
               <h5 class="text-xs font-bold text-slate-900">Pestaña: "Micrófono en Vivo"</h5>
             </div>
             <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Para reuniones presenciales en sala. Graba directamente desde el micrófono de tu computadora o teléfono sin instalar nada.</p>
-            <ul class="text-xs text-slate-500 mt-2 space-y-1 list-disc list-inside">
-              <li><strong>Botón Iniciar:</strong> Comienza a grabar. Debes presionar "Permitir" cuando el navegador pida permiso de micrófono.</li>
-              <li><strong>Ondas de sonido y Cronómetro:</strong> Muestran el tiempo transcurrido y confirman visualmente que el micrófono está captando la voz.</li>
-              <li><strong>Botón Finalizar:</strong> Detiene la grabación y deja el audio listo para procesar.</li>
-            </ul>
           </div>
 
           <!-- Espacio 5 -->
@@ -532,43 +611,34 @@
               <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold flex items-center justify-center border border-slate-200">5</span>
               <h5 class="text-xs font-bold text-slate-900">Pestaña: "Subir Archivo"</h5>
             </div>
-            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Si tu reunión fue grabada en Google Meet, Zoom, Teams o una grabadora móvil, simplemente arrastra el archivo aquí. Acepta MP3, WAV, M4A, OGG y MP4.</p>
+            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Si tu reunión fue grabada en Google Meet, Zoom o Teams, arrastra el archivo aquí. Acepta MP3, WAV, M4A, OGG y WebM.</p>
           </div>
 
           <!-- Espacio 6: Transcripción -->
           <div class="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition">
             <div class="flex items-center space-x-2 mb-1.5">
               <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold flex items-center justify-center border border-slate-200">6</span>
-              <h5 class="text-xs font-bold text-slate-900">Casilla: "Transcripción de Audio en Tiempo Real"</h5>
+              <h5 class="text-xs font-bold text-slate-900">Casilla: "Transcripción de Audio"</h5>
             </div>
-            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Al grabar con el micrófono, tu voz se transforma automáticamente en texto en vivo. Puedes ver las palabras reconocidas y editarlas o agregar notas si lo deseas. <em>La IA utilizará este texto exacto para redactar el Resumen Ejecutivo, los Acuerdos y las Tareas de tu reunión real.</em></p>
+            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Muestra el texto exacto capturado del audio. Puedes revisarlo, completarlo con notas o usar el botón "Dictar por voz".</p>
           </div>
 
           <!-- Botón 7 -->
           <div class="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition">
             <div class="flex items-center space-x-2 mb-1.5">
               <span class="w-5 h-5 rounded-full bg-slate-900 text-white font-mono text-[11px] font-bold flex items-center justify-center">7</span>
-              <h5 class="text-xs font-bold text-slate-900">Botón: "Generar Minuta y Acuerdos con IA"</h5>
+              <h5 class="text-xs font-bold text-slate-900">Botón: "Generación de Minuta"</h5>
             </div>
-            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Es el botón central. Al pulsarlo, el sistema toma el título, los participantes y la transcripción del audio grabado para estructurar el resumen ejecutivo, la lista de acuerdos y la matriz de tareas específicas de lo que hablaste.</p>
+            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Es el botón central. Estructura el resumen ejecutivo formal, la lista de acuerdos aprobados y la matriz de tareas asignadas con sus fechas de entrega.</p>
           </div>
 
-          <!-- Espacio 7 y 8 -->
-          <div class="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition">
-            <div class="flex items-center space-x-2 mb-1.5">
-              <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold flex items-center justify-center border border-slate-200">7</span>
-              <h5 class="text-xs font-bold text-slate-900">Resultados: Minuta, Acuerdos y Matriz de Compromisos</h5>
-            </div>
-            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Muestra el documento formal estructurado. En la tabla de compromisos puedes hacer clic en cada casilla de verificación (checkbox) para marcar qué tareas ya fueron completadas por el equipo.</p>
-          </div>
-
-          <!-- Botones 9 -->
+          <!-- Espacio 8 -->
           <div class="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition">
             <div class="flex items-center space-x-2 mb-1.5">
               <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold flex items-center justify-center border border-slate-200">8</span>
-              <h5 class="text-xs font-bold text-slate-900">Acciones: Descargar PDF, Copiar y Correo</h5>
+              <h5 class="text-xs font-bold text-slate-900">Acciones: Descargar PDF y Enviar por Correo</h5>
             </div>
-            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Permite llevarte la minuta lista: <em>Descargar PDF</em> genera un documento formal listo para archivar o firmar; <em>Copiar Markdown</em> para pegarlo en Notion o Word; y <em>Enviar por Correo</em> para despacharlo a los asistentes.</p>
+            <p class="text-xs text-slate-600 leading-relaxed"><strong>¿Para qué sirve?</strong> Permite descargar el PDF institucional listo para firma, y el botón <em>Enviar Minuta a Participantes</em> despacha el acta directamente a los correos registrados vía QR.</p>
           </div>
         </div>
 
@@ -592,23 +662,20 @@
 
           <!-- Chips de preguntas frecuentes rápidas -->
           <div class="flex flex-wrap gap-1.5 mt-2.5">
-            <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Para qué sirve el Título de la Sesión?">
-              ¿Para qué sirve el Título?
+            <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Cómo funciona el registro con QR?">
+              ¿Cómo funciona el QR?
             </button>
-            <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Cómo se llena la casilla de Participantes?">
-              ¿Cómo llenar Participantes?
+            <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Cómo se envía la minuta al correo?">
+              ¿Cómo enviar por correo?
             </button>
             <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Cómo grabo con el micrófono en vivo?">
               ¿Cómo grabar con micrófono?
             </button>
-            <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Qué formatos de audio puedo subir?">
-              ¿Qué formatos puedo subir?
-            </button>
             <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Cómo descargo el acta oficial en PDF?">
               ¿Cómo descargo en PDF?
             </button>
-            <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Qué es la Matriz de Compromisos y cómo se usa?">
-              ¿Qué es la Matriz de Tareas?
+            <button class="help-chip text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200 transition cursor-pointer" data-q="¿Dónde se guardan los archivos generados?">
+              ¿Dónde se guardan las minutas?
             </button>
           </div>
         </div>
@@ -618,7 +685,7 @@
           <div class="flex justify-start">
             <div class="max-w-[85%] rounded-xl px-4 py-3 text-xs bg-slate-100 text-slate-800 border border-slate-200 leading-relaxed">
               <div class="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-1">AIR Soporte de la Aplicación</div>
-              <p>¡Hola! Estoy aquí para resolver cualquier duda sobre el funcionamiento del sistema. Pregúntame sobre cualquier casilla, botón o función (por ejemplo: <em>"¿Cómo grabo?"</em>, <em>"¿Qué pongo en participantes?"</em> o <em>"¿Para qué sirve el modelo de IA?"</em>).</p>
+              <p>¡Hola! Estoy aquí para resolver cualquier duda sobre el funcionamiento del sistema AIR v1.1. Pregúntame sobre el código QR, la grabación de audio, la generación de minutas o el envío a correos.</p>
             </div>
           </div>
         </div>
@@ -636,7 +703,104 @@
     </div>
   </div>
 
-  <!-- Lógica de la aplicación -->
-  <script src="js/app.js"></script>
+  <!-- MODAL: HISTORIAL Y REPOSITORIO DE MINUTAS GENERADAS -->
+  <div id="modal-history" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 hidden">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full flex flex-col max-h-[85vh] overflow-hidden">
+      <div class="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <span class="text-base font-bold text-slate-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+            Repositorio de Minutas Generadas
+          </span>
+          <span id="history-count-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+            0 archivos
+          </span>
+        </div>
+        <button id="btn-close-history" class="text-slate-400 hover:text-slate-700 text-lg font-bold p-1 cursor-pointer">&times;</button>
+      </div>
+      <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3" id="history-items-container">
+        <p class="text-xs text-slate-400 italic text-center py-8">No se han generado minutas en esta sesión todavía.</p>
+      </div>
+      <div class="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+        <span class="text-[11px] text-slate-500">Los archivos se almacenan en <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700">minutas_generadas/</code></span>
+        <button id="btn-clear-history" class="text-xs text-red-600 hover:underline cursor-pointer">Limpiar Historial</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: AGREGAR ASISTENTE MANUALMENTE -->
+  <div id="modal-manual-attendee" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 hidden">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h4 class="text-sm font-bold text-slate-900">Agregar Asistente a la Reunión</h4>
+        <button id="btn-close-manual-attendee" class="text-slate-400 hover:text-slate-700 text-lg font-bold cursor-pointer">&times;</button>
+      </div>
+      <form id="form-manual-attendee" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre y Apellido <span class="text-red-500">*</span></label>
+          <input type="text" id="manual-name-input" required placeholder="Ej: Elena Morales" class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 focus:bg-white text-slate-900">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico <span class="text-red-500">*</span></label>
+          <input type="email" id="manual-email-input" required placeholder="elena.morales@empresa.com" class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 focus:bg-white text-slate-900">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Cargo / Empresa (Opcional)</label>
+          <input type="text" id="manual-role-input" placeholder="Ej: Gerente de Calidad" class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 focus:bg-white text-slate-900">
+        </div>
+        <div class="pt-2 flex justify-end space-x-2">
+          <button type="button" id="btn-cancel-manual-attendee" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer">Cancelar</button>
+          <button type="submit" class="px-4 py-1.5 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded-lg cursor-pointer">Guardar Asistente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ENVIAR MINUTA A PARTICIPANTES POR CORREO -->
+  <div id="modal-send-email" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 hidden">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center space-x-2">
+          <span class="text-sm font-bold text-slate-900 flex items-center">
+            <svg class="w-4 h-4 mr-1.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            Despacho de Minuta a Participantes
+          </span>
+        </div>
+        <button id="btn-close-email-modal" class="text-slate-400 hover:text-slate-700 text-lg font-bold cursor-pointer">&times;</button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Destinatarios Registrados:</label>
+          <div id="email-recipients-list" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 max-h-24 overflow-y-auto break-all">
+            (Sin correos registrados aún)
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Asunto del Correo:</label>
+          <input type="text" id="email-subject-input" readonly class="w-full text-xs px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-800 font-medium">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Cuerpo del Mensaje (Resumen y Acuerdos):</label>
+          <textarea id="email-body-preview" rows="5" readonly class="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-mono resize-none"></textarea>
+        </div>
+      </div>
+
+      <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-slate-100">
+        <button type="button" id="btn-copy-email-text" class="w-full sm:w-auto px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer">
+          📋 Copiar Texto Completo
+        </button>
+        <button type="button" id="btn-confirm-send-email" class="w-full sm:w-auto px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center space-x-1.5 shadow-2xs transition cursor-pointer">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+          <span>Abrir Cliente de Correo</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lógica de la aplicación con cache-busting v1.1 -->
+  <script src="js/app.js?v=1.1"></script>
 </body>
 </html>
